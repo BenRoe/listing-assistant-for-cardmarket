@@ -7,6 +7,8 @@
         mount: 'main.container',
         form: 'form#ListProductForm',
         filterForm: 'form#FilterForm',
+        pageTitle: '.page-title-container',
+        header: 'header#header',
         sellTab: 'a[href="#tabContent-sell"]',
         sellPane: '#tabContent-sell',
         offerRow: '.article-row[id^="articleRow"]',
@@ -169,6 +171,15 @@
         if (pane && !pane.offsetParent) document.querySelector(SEL.sellTab)?.click();
     }
 
+    // Puts the card title at the top, below the fixed header, so the sell form and the offers are in view.
+    // 'instant' because the page may use smooth scrolling.
+    function scrollToTitle() {
+        const title = document.querySelector(SEL.pageTitle);
+        if (!title) return;
+        const top = title.getBoundingClientRect().top + scrollY - (document.querySelector(SEL.header)?.offsetHeight || 0);
+        window.scrollTo({ top, behavior: 'instant' });
+    }
+
     // Price from the offers shown for the applied filter, formatted for the form; null if none.
     async function autoPrice() {
         await waitFor(() => document.querySelector(SEL.offerRow), 5000);
@@ -214,7 +225,8 @@
         state.active.filled = true;
         state.active.autoPrice = price;
         await saveActive();
-        f.price.focus();
+        f.price.focus({ preventScroll: true });
+        scrollToTitle();
         // The filled row is highlighted in the list; the status line only reports problems.
         setStatus(notes.length ? `${row.name}: ${notes.join('; ')}.` : '');
         render();
@@ -252,6 +264,7 @@
         const form = document.querySelector(SEL.form);
         if (!snap || Date.now() - snap.at > SUBMIT_WINDOW || form?.elements.idAddProduct?.value !== snap.idProduct) return;
         showSellTab();
+        scrollToTitle();
         for (const [name, v] of Object.entries(snap.values)) {
             const field = form.elements[name];
             if (!field || (field.tagName === 'SELECT' && ![...field.options].some((o) => o.value === v))) continue;
