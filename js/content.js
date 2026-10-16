@@ -111,7 +111,7 @@
             render();
             await sleep(120);
         }
-        if (missing.length) setStatus('Ready. Click "Search" on a card.');
+        if (missing.length) setStatus('');
     }
 
     async function removeCsv() {
@@ -203,7 +203,7 @@
         render();
         // Scroll only the list, not the page: the price field has just been focused.
         const active = ui.list.querySelector('.cmlp-row-active');
-        if (active) ui.table.scrollTop = active.offsetTop - ui.table.clientHeight / 2;
+        if (active) ui.scroll.scrollTop = active.offsetTop - ui.scroll.clientHeight / 2;
     }
 
     // ---- listed detection ----------------------------------------------------------------
@@ -297,9 +297,9 @@
             ? `${state.files[state.activeFile].label}: ${doneCount}/${state.rows.length} listed, ${rows.length} shown`
             : 'No CSV loaded';
         ui.list.replaceChildren(...rows.map(renderRow));
-        ui.table.hidden = !rows.length;
+        ui.scroll.hidden = !rows.length;
         ui.body.hidden = state.collapsed;
-        ui.toggle.textContent = state.collapsed ? '▸' : '▾';
+        ui.toggle.classList.toggle('is-collapsed', state.collapsed);
         ui.toggle.title = state.collapsed ? 'Expand' : 'Collapse';
     }
 
@@ -314,6 +314,7 @@
             el('thead', {}, el('tr', {}, ...['Card', 'Set', 'Foil', 'Condition', 'Lang', 'Qty', ''].map((t) => el('th', { textContent: t })))),
             ui.list
         );
+        ui.scroll = el('div', { className: 'cmlp-scroll' }, ui.table);
 
         const filter = el('input', { type: 'search', placeholder: 'Filter name or set', className: 'cmlp-filter' });
         filter.addEventListener('input', () => { state.filter = filter.value; render(); });
@@ -343,11 +344,11 @@
                 file
             ),
             el('div', { className: 'cmlp-bar' }, ui.file, filter, ui.binder, el('label', {}, hide, ' hide listed')),
-            ui.table
+            ui.scroll
         );
 
         const panel = el('div', { id: 'cmlp-panel' },
-            el('div', { className: 'cmlp-title' }, ui.toggle, el('strong', { textContent: 'Listing Assistant' }), ui.count),
+            el('div', { className: 'cmlp-title' }, el('strong', { textContent: 'Listing Assistant' }), ui.count, ui.toggle),
             ui.status,
             ui.body
         );
@@ -366,7 +367,6 @@
         buildPanel();
         render();
         if (state.rows.length) {
-            setStatus('Ready. Click "Search" on a card.');
             resolveScryfall();
         } else {
             setStatus('Load your ManaBox CSV to start.');
