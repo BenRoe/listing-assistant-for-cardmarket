@@ -85,3 +85,7 @@
 #cmlp-panel .cmlp-table thead th[data-sort="desc"]::after { content: '▼'; }
 #cmlp-panel .cmlp-table thead th[data-sort="asc"]::after, #cmlp-panel .cmlp-table thead th[data-sort="desc"]::after { visibility: visible; }
 #cmlp-panel .cmlp-table td.cmlp-seq { color: var(--cmlp-muted); }
+
+/* Offer prices are clickable (copied into the sell form) on product pages that have the form. */
+.cmlp-price-pick .article-row .price-container { cursor: pointer; }
+.cmlp-price-pick .article-row .price-container:hover { text-decoration: underline dotted; }

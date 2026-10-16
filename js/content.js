@@ -1,6 +1,6 @@
 (function () {
     const ext = globalThis.browser ?? globalThis.chrome;
-    const { CONDITION_ID, LANGUAGE_ID, DEFAULT_SETTINGS, buildRows, formatPrice, computePrice, buildSearchUrl } = CMLP;
+    const { CONDITION_ID, LANGUAGE_ID, DEFAULT_SETTINGS, buildRows, parsePrice, formatPrice, computePrice, buildSearchUrl } = CMLP;
 
     // Every Cardmarket DOM assumption lives here.
     const SEL = {
@@ -208,6 +208,16 @@
         const active = ui.list.querySelector('.cmlp-row-active');
         if (active) ui.scroll.scrollTop = active.offsetTop - ui.scroll.clientHeight / 2;
     }
+
+    // Click a price in the offers table: copy it into the sell form's price field.
+    document.addEventListener('click', (e) => {
+        const cell = e.target.closest?.(`${SEL.offerRow} ${SEL.offerPrice}`);
+        const price = document.querySelector(SEL.form)?.elements.price;
+        const n = cell && price ? parsePrice(cell.textContent) : null;
+        if (n == null) return;
+        setField(price, formatPrice(n));
+        price.focus({ preventScroll: true });
+    });
 
     // ---- listed detection ----------------------------------------------------------------
     // The sell form is a full page POST. The submit event leaves a timestamp in sessionStorage (no
@@ -430,6 +440,7 @@
         await loadState();
         buildPanel();
         render();
+        if (document.querySelector(SEL.form)) document.documentElement.classList.add('cmlp-price-pick');
         if (state.rows.length) {
             resolveScryfall();
         } else {
