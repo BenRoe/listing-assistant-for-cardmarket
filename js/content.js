@@ -307,7 +307,7 @@
             el('td', { textContent: `${r.setCode} #${r.number}` }),
             el('td', { textContent: r.foil === 'normal' ? '' : r.foil }),
             el('td', { textContent: r.condition.replace('_', ' ') }),
-            el('td', { textContent: r.language }),
+            el('td', { textContent: r.language.toUpperCase() }),
             el('td', { textContent: r.qty }),
             action
         );
