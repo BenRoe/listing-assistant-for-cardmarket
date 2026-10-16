@@ -12,7 +12,7 @@ Cards are identified by the Scryfall ID in the ManaBox CSV, which Scryfall maps 
 
 ## Install for development
 
-- Chromium: `chrome://extensions`, enable developer mode, "Load unpacked", pick this folder.
+- Chrome and other Chromium browsers: `chrome://extensions` (Brave: `brave://extensions`, Edge: `edge://extensions`), enable developer mode, "Load unpacked", pick this folder. Tested in Chromium only.
 - Firefox: `about:debugging`, "This Firefox", "Load Temporary Add-on", pick `manifest.json`.
 
 Tests: `node --test test/shared.test.mjs`.
