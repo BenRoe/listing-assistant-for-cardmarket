@@ -47,7 +47,7 @@
     // ---- storage -------------------------------------------------------------------------
 
     async function loadState() {
-        const s = await ext.storage.local.get(['csvs', 'activeFile', 'scryfall', 'done', 'settings', 'collapsed', 'active']);
+        const s = await ext.storage.local.get(['csvs', 'activeFile', 'scryfall', 'done', 'settings', 'collapsed', 'hideDone', 'active']);
         state.files = s.csvs || {};
         // CSVs stored before the scan-order column have no seq; CSV position is the best we can rebuild.
         for (const f of Object.values(state.files)) f.rows.forEach((r, i) => { r.seq ??= i + 1; });
@@ -55,6 +55,7 @@
         state.done = s.done || {};
         state.settings = { ...DEFAULT_SETTINGS, ...(s.settings || {}) };
         state.collapsed = !!s.collapsed;
+        state.hideDone = !!s.hideDone;
         state.active = s.active || null;
         selectFile(state.files[s.activeFile] ? s.activeFile : Object.keys(state.files)[0] || '');
     }
@@ -361,8 +362,8 @@
             saveFiles();
             render();
         });
-        const hide = el('input', { type: 'checkbox' });
-        hide.addEventListener('change', () => { state.hideDone = hide.checked; render(); });
+        const hide = el('input', { type: 'checkbox', checked: state.hideDone });
+        hide.addEventListener('change', () => { state.hideDone = hide.checked; ext.storage.local.set({ hideDone: state.hideDone }); render(); });
 
         ui.toggle = el('button', { type: 'button', className: 'cmlp-toggle', onclick: () => {
             state.collapsed = !state.collapsed;
