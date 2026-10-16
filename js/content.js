@@ -6,6 +6,7 @@
     const SEL = {
         mount: 'main.container',
         form: 'form#ListProductForm',
+        filterForm: 'form#FilterForm',
         sellTab: 'a[href="#tabContent-sell"]',
         sellPane: '#tabContent-sell',
         offerRow: '.article-row[id^="articleRow"]',
@@ -266,6 +267,26 @@
             }
         }
     }
+
+    // Changing the condition or language in the sell form applies it to the filter (and reloads the offers).
+    // isTrusted skips the change events the plugin dispatches itself while filling.
+    document.addEventListener('change', (e) => {
+        const name = e.target.name;
+        if (!e.isTrusted || !state.active || e.target.form?.id !== 'ListProductForm') return;
+        if (name !== 'idCondition' && name !== 'idLanguage') return;
+        const filter = document.querySelector(SEL.filterForm)?.elements;
+        if (!filter) return;
+        if (name === 'idCondition') {
+            if (!filter.minCondition) return;
+            filter.minCondition.value = e.target.value;
+        } else {
+            // The filter has one checkbox per language: only the chosen one stays checked.
+            const boxes = [...document.querySelector(SEL.filterForm).querySelectorAll('input[name^="language["]')];
+            if (!boxes.some((b) => b.name === `language[${e.target.value}]`)) return;
+            for (const b of boxes) b.checked = b.name === `language[${e.target.value}]`;
+        }
+        filter.apply.click();
+    });
 
     // ---- listed detection ----------------------------------------------------------------
     // The sell form is a full page POST. The submit event leaves a timestamp in sessionStorage (no
