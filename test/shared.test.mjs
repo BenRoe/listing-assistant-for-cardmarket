@@ -61,3 +61,9 @@ test('search URL: row filters only, foil always explicit', () => {
     assert.equal(buildSearchUrl({ ...base, foil: 'foil' }, 3520, 'en'), '/en/Magic/Products?idProduct=3520&language=3&minCondition=4&isFoil=Y');
     assert.equal(buildSearchUrl({ ...base, language: 'xx', condition: '' }, 1, 'de'), '/de/Magic/Products?idProduct=1&isFoil=N');
 });
+
+test('rows carry scan position and Added timestamp', () => {
+    const { rows } = buildRows(csv('ManaBox_List.csv'));
+    assert.deepEqual(rows.map((r) => r.seq), [1, 2, 3]);
+    assert.ok(rows.every((r) => r.added.startsWith('2026-')));
+});

@@ -78,3 +78,10 @@
 #cmlp-panel.is-dragover > :not(.cmlp-drop) { opacity: .1; }
 #cmlp-panel .cmlp-drop { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; pointer-events: none; color: #475569; font-size: 24px; font-weight: 600; letter-spacing: .01em; text-align: center; }
 #cmlp-panel.is-dragover .cmlp-drop { display: flex; }
+#cmlp-panel .cmlp-table thead th.is-sortable { cursor: pointer; user-select: none; }
+#cmlp-panel .cmlp-table thead th.is-sortable:hover { color: var(--cmlp-fg); }
+/* The arrow always takes its space (hidden until sorted) so the column width does not jump. */
+#cmlp-panel .cmlp-table thead th.is-sortable::after { content: '▲'; display: inline-block; width: 1.2em; text-align: right; visibility: hidden; }
+#cmlp-panel .cmlp-table thead th[data-sort="desc"]::after { content: '▼'; }
+#cmlp-panel .cmlp-table thead th[data-sort="asc"]::after, #cmlp-panel .cmlp-table thead th[data-sort="desc"]::after { visibility: visible; }
+#cmlp-panel .cmlp-table td.cmlp-seq { color: var(--cmlp-muted); }

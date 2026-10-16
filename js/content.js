@@ -21,7 +21,7 @@
     const state = {
         files: {}, rows: [], activeFile: '', scry: {}, done: {}, active: null,
         settings: { ...DEFAULT_SETTINGS },
-        filter: '', binder: '', hideDone: false, collapsed: false, status: ''
+        filter: '', binder: '', sort: null, hideDone: false, collapsed: false, status: ''
     };
     let ui = {};
 
@@ -49,6 +49,8 @@
     async function loadState() {
         const s = await ext.storage.local.get(['csvs', 'activeFile', 'scryfall', 'done', 'settings', 'collapsed', 'active']);
         state.files = s.csvs || {};
+        // CSVs stored before the scan-order column have no seq; CSV position is the best we can rebuild.
+        for (const f of Object.values(state.files)) f.rows.forEach((r, i) => { r.seq ??= i + 1; });
         state.scry = s.scryfall || {};
         state.done = s.done || {};
         state.settings = { ...DEFAULT_SETTINGS, ...(s.settings || {}) };
@@ -245,13 +247,40 @@
         if (ui.status) ui.status.textContent = text;
     }
 
+    // Sortable columns; the trailing actions column has no sort key.
+    const COLUMNS = [
+        // Scanned order: ManaBox's Added timestamp, CSV position as tie-break.
+        { title: '#', sortKey: (r) => `${r.added || ''}|${String(r.seq ?? 0).padStart(6, '0')}` },
+        { title: 'Card', sortKey: (r) => r.name },
+        { title: 'Set', sortKey: (r) => `${r.setCode} ${r.number}` },
+        { title: 'Foil', sortKey: (r) => r.foil },
+        { title: 'Condition', sortKey: (r) => CONDITION_ID[r.condition] || 99 },
+        { title: 'Lang', sortKey: (r) => r.language },
+        { title: 'Qty', sortKey: (r) => r.qty },
+        { title: '' }
+    ];
+
+    const compare = (a, b) => typeof a === 'number' ? a - b : a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
+
     function visibleRows() {
         const q = state.filter.trim().toLowerCase();
-        return state.rows.filter((r) => {
+        const rows = state.rows.filter((r) => {
             if (state.binder && state.binder !== '*' && r.binder !== state.binder) return false;
             if (state.hideDone && state.done[r.key]) return false;
             return !q || `${r.name} ${r.setCode} ${r.setName}`.toLowerCase().includes(q);
         });
+        if (state.sort) {
+            const { sortKey } = COLUMNS[state.sort.col];
+            rows.sort((a, b) => state.sort.dir * compare(sortKey(a), sortKey(b)));
+        }
+        return rows;
+    }
+
+    // Click cycles ascending, descending, off (CSV order).
+    function sortBy(col) {
+        const s = state.sort;
+        state.sort = s?.col !== col ? { col, dir: 1 } : s.dir === 1 ? { col, dir: -1 } : null;
+        render();
     }
 
     function renderRow(r) {
@@ -273,6 +302,7 @@
         }
 
         return el('tr', { className: (done ? 'cmlp-row-done ' : '') + (state.active?.key === r.key ? 'cmlp-row-active' : '') },
+            el('td', { className: 'cmlp-seq', textContent: r.seq ?? '' }),
             el('td', { textContent: r.name }),
             el('td', { textContent: `${r.setCode} #${r.number}` }),
             el('td', { textContent: r.foil === 'normal' ? '' : r.foil }),
@@ -296,6 +326,10 @@
         ui.count.textContent = state.rows.length
             ? `${state.files[state.activeFile].label}: ${doneCount}/${state.rows.length} listed, ${rows.length} shown`
             : 'No CSV loaded';
+        ui.heads.forEach((th, i) => {
+            th.textContent = COLUMNS[i].title;
+            th.dataset.sort = state.sort?.col === i ? (state.sort.dir === 1 ? 'asc' : 'desc') : '';
+        });
         ui.list.replaceChildren(...rows.map(renderRow));
         ui.scroll.hidden = !rows.length;
         ui.body.hidden = state.collapsed;
@@ -311,7 +345,7 @@
         ui.count = el('span', { className: 'cmlp-count' });
         ui.list = el('tbody');
         ui.table = el('table', { className: 'cmlp-table' },
-            el('thead', {}, el('tr', {}, ...['Card', 'Set', 'Foil', 'Condition', 'Lang', 'Qty', ''].map((t) => el('th', { textContent: t })))),
+            el('thead', {}, el('tr', {}, ...(ui.heads = COLUMNS.map((c, i) => el('th', c.sortKey ? { className: 'is-sortable', title: 'Sort', onclick: () => sortBy(i) } : {}))))),
             ui.list
         );
         ui.scroll = el('div', { className: 'cmlp-scroll' }, ui.table);

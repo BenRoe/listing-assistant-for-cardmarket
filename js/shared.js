@@ -46,7 +46,9 @@
                 language: String(r['Language'] || '').trim().toLowerCase().replace('-', '_'),
                 altered: bool(r['Altered']),
                 signed: bool(r['Signed']),
-                misprint: bool(r['Misprint'])
+                misprint: bool(r['Misprint']),
+                added: String(r['Added'] || '').trim(),
+                seq: rows.length + 1
             };
             const base = rowKey(row, '');
             seen[base] = (seen[base] || 0) + 1;
