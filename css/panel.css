@@ -12,6 +12,7 @@
 #cmlp-panel .cmlp-table thead th { position: sticky; top: 0; background: Canvas; }
 #cmlp-panel .cmlp-actions { display: flex; gap: 4px; align-items: center; }
 #cmlp-panel .cmlp-row-done td { opacity: .55; }
-#cmlp-panel .cmlp-row-active td { background: #ffe9a855; }
+#cmlp-panel .cmlp-row-active td { background: rgba(255, 193, 7, .4); font-weight: 600; }
+#cmlp-panel .cmlp-status:empty { display: none; }
 #cmlp-panel .cmlp-done { color: #1a7f37; font-weight: 600; }
 #cmlp-panel [hidden] { display: none !important; }

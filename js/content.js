@@ -190,21 +190,20 @@
         const offers = [...document.querySelectorAll(SEL.offerRow)]
             .map((r) => r.querySelector(SEL.offerPrice)?.textContent || '');
         const price = computePrice(state.settings, offers);
-        let priceNote = '';
-        if (state.settings.priceSource === 'none') {
-            priceNote = '';
-        } else if (price == null) {
-            notes.push('no offers match the filter, enter the price by hand');
-        } else {
-            setField(f.price, formatPrice(price));
-            priceNote = ` Price ${formatPrice(price)} € (${state.settings.priceSource} of ${offers.length} offers).`;
+        if (state.settings.priceSource !== 'none') {
+            if (price == null) notes.push('no offers match the filter, enter the price by hand');
+            else setField(f.price, formatPrice(price));
         }
 
         state.active.filled = true;
         await saveActive();
         f.price.focus();
-        setStatus(`Filled ${row.name}.${priceNote} Check the form and press "Put for sale".` + (notes.length ? ` Note: ${notes.join('; ')}.` : ''));
+        // The filled row is highlighted in the list; the status line only reports problems.
+        setStatus(notes.length ? `${row.name}: ${notes.join('; ')}.` : '');
         render();
+        // Scroll only the list, not the page: the price field has just been focused.
+        const active = ui.list.querySelector('.cmlp-row-active');
+        if (active) ui.table.scrollTop = active.offsetTop - ui.table.clientHeight / 2;
     }
 
     // ---- listed detection ----------------------------------------------------------------
