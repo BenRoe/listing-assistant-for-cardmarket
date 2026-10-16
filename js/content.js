@@ -427,9 +427,8 @@
             for (const f of csvs) await importCsv(f);
         });
 
-        const mount = document.querySelector(SEL.mount);
-        if (mount) mount.prepend(panel);
-        else document.body.prepend(panel);
+        // No main.container means no real Cardmarket page (e.g. the Cloudflare challenge): show no panel.
+        document.querySelector(SEL.mount)?.prepend(panel);
     }
 
     ext.storage.onChanged.addListener((changes) => {
