@@ -21,10 +21,15 @@ Tests: `node --test test/shared.test.mjs`.
 
 - **Panel under the search bar** on every Magic page on Cardmarket; collapsible, remembers its state.
 - **Several ManaBox CSVs**, list or collection exports, each kept separately with a file selector; a binder selector for collection exports.
+- **Drag and drop** CSV files onto the panel (the panel fades and shows a hint; other file types are refused), or use "Load ManaBox CSV".
+- **Sortable table**: click a column header to sort ascending, descending, or back to CSV order. The `#` column sorts by scanned order (ManaBox's `Added` time).
 - **Exact card match** through the Scryfall ID in the CSV (Scryfall gives the Cardmarket product ID); cached.
 - **Search button** opens the product page filtered to the card's language, minimum condition and foil state, on top of your saved Cardmarket filter.
 - **Sell form pre-filled**: quantity, language, condition, foil, signed, altered, comment ("Misprint" optional) and price.
 - **Price from the live market**: median or lowest of the offers shown for that filter, or none; multiplier, rounding and minimum price in the settings.
+- **Click an offer price** in the offers table to copy it into the sell form's price field.
+- **Filter changes keep your form**: the Cardmarket filter button reloads the page, the plugin puts the sell form values back (an auto-filled price is recomputed for the new filter, a price you entered is kept).
+- **Condition and language follow the filter**: changing them in the sell form applies them to the offers filter. The page scrolls to the card title after a search or filter reload.
 - **Listed tracking per loaded CSV**, marks a card "listed" after Cardmarket's success message; manual "done" and "undo" per row.
 - **Nothing is submitted for you** and nothing leaves the browser except Scryfall IDs sent to `api.scryfall.com`.
 
@@ -55,7 +60,7 @@ Notes:
 
 - **No telemetry, no analytics, no tracking, no accounts.** The plugin collects nothing about you.
 - **The only external request** is to `api.scryfall.com`, with the Scryfall IDs of your CSV cards, to look up Cardmarket product IDs. Like any web request it exposes your IP address to Scryfall. Nothing else is sent: not your prices, quantities, conditions, file names or Cardmarket account data.
-- **Everything else stays in your browser**: the loaded CSVs, the ID cache, listed flags, settings and panel state live in the extension's local storage (`storage.local`, not synced to any account). One timestamp is kept in the Cardmarket tab's `sessionStorage` to detect a finished listing; it holds no card data.
+- **Everything else stays in your browser**: the loaded CSVs, the ID cache, listed flags, settings and panel state live in the extension's local storage (`storage.local`, not synced to any account). The Cardmarket tab's `sessionStorage` holds a timestamp to detect a finished listing (no card data) and, for a few seconds around a filter reload, the sell form's values (quantity, language, condition, flags, comment, price); both are removed again and vanish with the tab.
 - On Cardmarket the plugin only reads the page you have open and fills the form fields; the product pages it opens are normal page loads in your own tab. It never submits a listing for you.
 - Delete data with "Remove CSV" in the panel, "Clear listed flags" and "Clear Cardmarket ID cache" on the options page, or by removing the extension.
 
