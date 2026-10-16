@@ -71,3 +71,10 @@
 #cmlp-panel .cmlp-row-done td:first-child { text-decoration: line-through; }
 #cmlp-panel .cmlp-row-active td, #cmlp-panel .cmlp-row-active:hover td { background: rgba(251, 191, 36, .3); font-weight: 600; }
 #cmlp-panel .cmlp-done { color: var(--cmlp-accent-hover); font-weight: 600; }
+
+#cmlp-panel { position: relative; transition: box-shadow .15s; }
+#cmlp-panel > :not(.cmlp-drop) { transition: opacity .15s; }
+#cmlp-panel.is-dragover { outline: 2px solid var(--cmlp-accent); outline-offset: -2px; background: linear-gradient(rgba(16, 185, 129, .08), rgba(16, 185, 129, .08)), var(--cmlp-bg); box-shadow: 0 0 0 4px rgba(16, 185, 129, .18); }
+#cmlp-panel.is-dragover > :not(.cmlp-drop) { opacity: .1; }
+#cmlp-panel .cmlp-drop { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; pointer-events: none; color: #475569; font-size: 24px; font-weight: 600; letter-spacing: .01em; text-align: center; }
+#cmlp-panel.is-dragover .cmlp-drop { display: flex; }

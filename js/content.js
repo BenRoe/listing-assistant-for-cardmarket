@@ -350,8 +350,37 @@
         const panel = el('div', { id: 'cmlp-panel' },
             el('div', { className: 'cmlp-title' }, el('strong', { textContent: 'Listing Assistant' }), ui.count, ui.toggle),
             ui.status,
-            ui.body
+            ui.body,
+            el('div', { className: 'cmlp-drop', textContent: 'Drop your ManaBox CSV files here' })
         );
+
+        // Drop CSV files anywhere on the panel; dragenter/leave fire per child, so count depth.
+        // During a drag only the MIME type is readable (not the name): accept the types an OS reports for a .csv, check the name on drop.
+        const CSV_TYPES = ['text/csv', 'text/x-csv', 'text/plain', 'text/comma-separated-values', 'application/csv', 'application/x-csv', 'application/vnd.ms-excel'];
+        const isFileDrag = (e) => e.dataTransfer?.types?.includes('Files');
+        const wantsFiles = (e) => [...e.dataTransfer.items].some((i) => CSV_TYPES.includes(i.type));
+        let depth = 0;
+        panel.addEventListener('dragenter', (e) => {
+            if (!isFileDrag(e)) return;
+            e.preventDefault();
+            depth++;
+            panel.classList.toggle('is-dragover', wantsFiles(e));
+        });
+        panel.addEventListener('dragleave', () => { if (--depth <= 0) { depth = 0; panel.classList.remove('is-dragover'); } });
+        panel.addEventListener('dragover', (e) => {
+            if (!isFileDrag(e)) return;
+            e.preventDefault(); // always cancel, otherwise the browser would open the dropped file
+            e.dataTransfer.dropEffect = wantsFiles(e) ? 'copy' : 'none';
+        });
+        panel.addEventListener('drop', async (e) => {
+            if (!isFileDrag(e)) return;
+            e.preventDefault();
+            depth = 0;
+            panel.classList.remove('is-dragover');
+            const csvs = [...e.dataTransfer.files].filter((f) => /\.csv$/i.test(f.name));
+            if (!csvs.length) { setStatus('Drop a .csv file.'); return; }
+            for (const f of csvs) await importCsv(f);
+        });
 
         const mount = document.querySelector(SEL.mount);
         if (mount) mount.prepend(panel);
