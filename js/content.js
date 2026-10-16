@@ -14,6 +14,8 @@
         successAlert: '.systemMessage.alert-success'
     };
     const SUBMIT_KEY = 'cmlp.submitAt';
+    const SNAP_KEY = 'cmlp.formSnap';
+    const SNAP_FIELDS = ['amount', 'idLanguage', 'idCondition', 'comments', 'price', 'isFoil', 'isSigned', 'isAltered', 'saveSettings'];
     const SUBMIT_WINDOW = 60 * 1000;
     const FILL_MAX_AGE = 10 * 60 * 1000;
     const BATCH = 75;
@@ -160,6 +162,21 @@
         }
     }
 
+    // The Sell tab is not necessarily the one Cardmarket opens by default.
+    function showSellTab() {
+        const pane = document.querySelector(SEL.sellPane);
+        if (pane && !pane.offsetParent) document.querySelector(SEL.sellTab)?.click();
+    }
+
+    // Price from the offers shown for the applied filter, formatted for the form; null if none.
+    async function autoPrice() {
+        await waitFor(() => document.querySelector(SEL.offerRow), 5000);
+        const offers = [...document.querySelectorAll(SEL.offerRow)]
+            .map((r) => r.querySelector(SEL.offerPrice)?.textContent || '');
+        const price = computePrice(state.settings, offers);
+        return price == null ? null : formatPrice(price);
+    }
+
     // Runs on the product page after "Search": fills the Sell tab form from the CSV row.
     async function resumeFill() {
         const a = state.active;
@@ -169,9 +186,7 @@
         const row = allRows().find((r) => r.key === a.key);
         if (!row) return;
 
-        // The Sell tab is not necessarily the one Cardmarket opens by default.
-        const pane = document.querySelector(SEL.sellPane);
-        if (pane && !pane.offsetParent) document.querySelector(SEL.sellTab)?.click();
+        showSellTab();
 
         const f = form.elements;
         const notes = [];
@@ -189,16 +204,14 @@
         if (row.misprint && state.settings.commentMisprint) setField(f.comments, 'Misprint');
 
         // Price: the offers shown for the applied filter (language, condition, foil of this row).
-        await waitFor(() => document.querySelector(SEL.offerRow), 5000);
-        const offers = [...document.querySelectorAll(SEL.offerRow)]
-            .map((r) => r.querySelector(SEL.offerPrice)?.textContent || '');
-        const price = computePrice(state.settings, offers);
+        const price = await autoPrice();
         if (state.settings.priceSource !== 'none') {
             if (price == null) notes.push('no offers match the filter, enter the price by hand');
-            else setField(f.price, formatPrice(price));
+            else setField(f.price, price);
         }
 
         state.active.filled = true;
+        state.active.autoPrice = price;
         await saveActive();
         f.price.focus();
         // The filled row is highlighted in the list; the status line only reports problems.
@@ -217,7 +230,42 @@
         if (n == null) return;
         setField(price, formatPrice(n));
         price.focus({ preventScroll: true });
+        // A picked price is the user's choice: do not replace it with a recomputed one after a filter reload.
+        if (state.active) { state.active.autoPrice = null; saveActive(); }
     });
+
+    // The filter button is a full page POST and the sell form would come back empty: keep its values
+    // in sessionStorage across that reload (tab scoped, short lived) and put them back afterwards.
+    document.addEventListener('submit', (e) => {
+        if (e.target.id !== 'FilterForm') return;
+        const f = document.querySelector(SEL.form)?.elements;
+        if (!f || !state.active) return;
+        const values = {};
+        for (const n of SNAP_FIELDS) if (f[n]) values[n] = f[n].type === 'checkbox' ? f[n].checked : f[n].value;
+        sessionStorage.setItem(SNAP_KEY, JSON.stringify({ at: Date.now(), idProduct: f.idAddProduct?.value, values }));
+    }, true);
+
+    async function restoreForm() {
+        const snap = JSON.parse(sessionStorage.getItem(SNAP_KEY) || 'null');
+        sessionStorage.removeItem(SNAP_KEY);
+        const form = document.querySelector(SEL.form);
+        if (!snap || Date.now() - snap.at > SUBMIT_WINDOW || form?.elements.idAddProduct?.value !== snap.idProduct) return;
+        showSellTab();
+        for (const [name, v] of Object.entries(snap.values)) {
+            const field = form.elements[name];
+            if (!field || (field.tagName === 'SELECT' && ![...field.options].some((o) => o.value === v))) continue;
+            if (typeof v === 'boolean') setChecked(field, v); else setField(field, v);
+        }
+        // The auto-filled price depends on the filter: recompute it, keep a price the user entered.
+        if (state.active?.autoPrice && snap.values.price === state.active.autoPrice) {
+            const price = await autoPrice();
+            if (price) {
+                setField(form.elements.price, price);
+                state.active.autoPrice = price;
+                saveActive();
+            }
+        }
+    }
 
     // ---- listed detection ----------------------------------------------------------------
     // The sell form is a full page POST. The submit event leaves a timestamp in sessionStorage (no
@@ -446,6 +494,7 @@
             setStatus('Load your ManaBox CSV to start.');
         }
         checkListed();
-        resumeFill();
+        await resumeFill();
+        await restoreForm();
     })();
 })();

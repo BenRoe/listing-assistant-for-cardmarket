@@ -32,7 +32,7 @@ Consequence for the plugin:
 - Header: `header#header.fixed-top` (fixed) followed by `main.container`. The plugin panel is the first child of `main.container`, so it sits directly under the search bar.
 - Tab container `div.tab-container` with tabs Info, Sell, Wants (`a[href="#tabContent-sell"]`, pane `#tabContent-sell`).
 - Sell form: `form#ListProductForm`, same fields as the popup (see [mixed-products-modal.md](mixed-products-modal.md)), `action="/en/Magic/PostGetAction/Article_ListProduct"`, `method="post"`.
-- Filter sidebar: `form#FilterForm`.
+- Filter sidebar: `form#FilterForm`, `method="post"` to `/PostGetAction/Product_Filter_FilterProduct` (with a `__cmtkn` token), fields `minCondition` (select 1 to 7), `extra[isFoil]`, `language[n]`, submit button `apply`. Applying it is a full page navigation that ends on the product URL with `language`, `minCondition`, `isFoil` in the query (verified live, 2026-10-16); the sell form comes back empty, so the plugin keeps its values across that reload.
 - Offers: rows `.article-row[id^="articleRow<id>"]`; price in `.price-container` (first match per row, text like `2,63 €`). The first page shows up to about 50 offers.
 
 ## Submitting (second test, see [submit-test.md](submit-test.md))
