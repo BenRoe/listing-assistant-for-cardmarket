@@ -1,0 +1,40 @@
+name: Release
+
+on:
+  push:
+    tags: ['[0-9]+.[0-9]+.[0-9]+']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # git-cliff needs the history and the previous tag
+
+      - name: Tag must match the manifest version
+        run: |
+          v=$(jq -r .version manifest.json)
+          [ "$v" = "${GITHUB_REF_NAME}" ] || { echo "manifest.json is $v, tag is ${GITHUB_REF_NAME}"; exit 1; }
+
+      - name: Unit tests
+        run: node --test test/shared.test.mjs
+
+      - name: Release notes from the commits since the previous tag
+        uses: orhun/git-cliff-action@v4
+        with:
+          config: cliff.toml
+          args: --latest --strip header
+        env:
+          OUTPUT: RELEASE_NOTES.md
+
+      - name: Package the extension
+        run: zip -r "cardmarket-listing-assistant-${GITHUB_REF_NAME}.zip" manifest.json icons css js lib options
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" "cardmarket-listing-assistant-${GITHUB_REF_NAME}.zip" --title "$GITHUB_REF_NAME" --notes-file RELEASE_NOTES.md
