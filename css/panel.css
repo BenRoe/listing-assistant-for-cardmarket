@@ -1,0 +1,17 @@
+#cmlp-panel { margin: 12px 0; padding: 10px 12px; border: 1px solid #8884; border-radius: 6px; font-size: 14px; }
+#cmlp-panel .cmlp-title { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+#cmlp-panel .cmlp-toggle { width: 24px; }
+#cmlp-panel .cmlp-head, #cmlp-panel .cmlp-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 8px; }
+#cmlp-panel button { padding: 2px 8px; cursor: pointer; }
+#cmlp-panel button:disabled { cursor: not-allowed; opacity: .5; }
+#cmlp-panel .cmlp-filter { min-width: 220px; padding: 2px 6px; }
+#cmlp-panel .cmlp-status { display: block; margin-bottom: 8px; font-style: italic; }
+#cmlp-panel .cmlp-count { margin-left: auto; opacity: .8; }
+#cmlp-panel .cmlp-table { width: 100%; border-collapse: collapse; display: block; max-height: 220px; overflow-y: auto; }
+#cmlp-panel .cmlp-table th, #cmlp-panel .cmlp-table td { padding: 3px 8px; text-align: left; border-bottom: 1px solid #8883; white-space: nowrap; }
+#cmlp-panel .cmlp-table thead th { position: sticky; top: 0; background: Canvas; }
+#cmlp-panel .cmlp-actions { display: flex; gap: 4px; align-items: center; }
+#cmlp-panel .cmlp-row-done td { opacity: .55; }
+#cmlp-panel .cmlp-row-active td { background: #ffe9a855; }
+#cmlp-panel .cmlp-done { color: #1a7f37; font-weight: 600; }
+#cmlp-panel [hidden] { display: none !important; }

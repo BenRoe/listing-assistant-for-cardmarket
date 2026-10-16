@@ -1,0 +1,53 @@
+{
+    "manifest_version": 3,
+    "name": "Cardmarket Listing Assistant",
+    "version": "0.1.0",
+    "description": "Pick a card from your ManaBox CSV and get Cardmarket's list-product form filled for it.",
+    "icons": {
+        "16": "icons/icon-16.png",
+        "32": "icons/icon-32.png",
+        "48": "icons/icon-48.png",
+        "128": "icons/icon-128.png"
+    },
+    "permissions": [
+        "storage"
+    ],
+    "host_permissions": [
+        "https://api.scryfall.com/*"
+    ],
+    "browser_specific_settings": {
+        "gecko": {
+            "id": "cardmarket-listing-assistant@local",
+            "data_collection_permissions": {
+                "required": [
+                    "none"
+                ]
+            }
+        }
+    },
+    "background": {
+        "service_worker": "js/background.js",
+        "scripts": [
+            "js/background.js"
+        ]
+    },
+    "options_ui": {
+        "page": "options/options.html",
+        "open_in_tab": true
+    },
+    "content_scripts": [
+        {
+            "matches": [
+                "https://www.cardmarket.com/*/Magic/*"
+            ],
+            "js": [
+                "lib/papaparse.min.js",
+                "js/shared.js",
+                "js/content.js"
+            ],
+            "css": [
+                "css/panel.css"
+            ]
+        }
+    ]
+}

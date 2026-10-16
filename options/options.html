@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>Listing Assistant settings</title>
+    <style>
+        body { font: 14px system-ui, sans-serif; min-width: 320px; padding: 12px; }
+        label { display: block; margin: 10px 0 2px; font-weight: 600; }
+        select, input[type=number] { width: 100%; box-sizing: border-box; padding: 3px; }
+        .check { font-weight: normal; display: flex; gap: 6px; align-items: center; }
+        small { display: block; opacity: .7; margin-top: 2px; }
+    </style>
+</head>
+<body>
+    <label for="priceSource">Price to fill in</label>
+    <select id="priceSource">
+        <option value="median">Median of the offers shown for the filter</option>
+        <option value="lowest">Lowest of the offers shown for the filter</option>
+        <option value="none">Do not fill a price</option>
+    </select>
+    <small>The filter is your saved Cardmarket filter; the plugin overrides language, minimum condition and foil with the CSV card.</small>
+
+    <label for="multiplier">Multiplier (%)</label>
+    <input id="multiplier" type="number" min="1" max="1000" step="1">
+    <small>Applied to the price above: 100 = as is, 90 = 10 % cheaper, 110 = 10 % more expensive.</small>
+
+    <label for="round">Round to</label>
+    <select id="round">
+        <option value="0.01">0,01 €</option>
+        <option value="0.05">0,05 €</option>
+    </select>
+
+    <label for="minPrice">Minimum price (€)</label>
+    <input id="minPrice" type="number" min="0.02" step="0.01">
+    <small>Cardmarket rejects 0,00 and 0,01.</small>
+
+    <label class="check"><input id="commentMisprint" type="checkbox"> Write "Misprint" into the comment for misprint cards</label>
+
+    <label>Stored data</label>
+    <button id="clearDone" type="button">Clear listed flags</button>
+    <button id="clearCache" type="button">Clear Cardmarket ID cache</button>
+    <small id="dataStatus">Reload open Cardmarket tabs afterwards. CSV files are removed in the panel with "Remove CSV".</small>
+
+    <script src="../js/shared.js"></script>
+    <script src="options.js"></script>
+</body>
+</html>
