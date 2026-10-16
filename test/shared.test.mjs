@@ -8,20 +8,20 @@ const { buildRows, parsePrice, formatPrice, median, computePrice, buildSearchUrl
 
 const csv = (f) => Papa.parse(readFileSync(new URL(`../example-csv/${f}`, import.meta.url), 'utf8'), { header: true, skipEmptyLines: true }).data;
 
-test('collection export holds every list row once per binder', () => {
+test('collection export carries a binder per row', () => {
     const a = buildRows(csv('ManaBox_List.csv'));
     const b = buildRows(csv('ManaBox_Collection.csv'));
-    assert.equal(a.rows.length, 24);
-    assert.equal(b.rows.length, 48);
-    assert.deepEqual([...new Set(b.rows.map((r) => r.binder))].sort(), ['Ordner', 'ordner1']);
-    const names = (rows) => rows.map((r) => r.name + r.condition + r.qty);
-    assert.deepEqual(names(b.rows.filter((r) => r.binder === 'Ordner')), names(a.rows));
+    assert.equal(a.rows.length, 3);
+    assert.equal(b.rows.length, 3);
+    assert.deepEqual(a.rows.map((r) => r.binder), ['', '', '']);
+    assert.deepEqual([...new Set(b.rows.map((r) => r.binder))].sort(), ['Main Binder', 'Sell List']);
+    assert.equal(new Set(b.rows.map((r) => r.key)).size, 3);
 });
 
 test('the same CSV loaded as two files gets distinct keys', () => {
     const a = buildRows(csv('ManaBox_List.csv'), 'a.csv').rows.map((r) => r.key);
     const b = buildRows(csv('ManaBox_List.csv'), 'b.csv').rows.map((r) => r.key);
-    assert.equal(new Set([...a, ...b]).size, 48);
+    assert.equal(new Set([...a, ...b]).size, 6);
     assert.deepEqual(a, buildRows(csv('ManaBox_List.csv'), 'a.csv').rows.map((r) => r.key));
 });
 

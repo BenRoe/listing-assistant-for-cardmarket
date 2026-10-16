@@ -14,7 +14,7 @@ Name,Set code,Set name,Collector number,Foil,Rarity,Quantity,ManaBox ID,Scryfall
 
 Same columns plus two leading ones: `Binder Name,Binder Type,` then the list columns. Parse by header name, not by position, so both exports work.
 
-**A collection export repeats cards per binder.** The example file has 48 rows: the same 24 cards once in binder `ordner1` (`Binder Type` = `binder`) and once in `Ordner` (`Binder Type` = `list`). Listing every row would list each card twice, so the plugin shows one binder at a time (default: the first) and offers "All binders".
+**A collection export repeats cards per binder.** A real export of one user held the same 24 cards once in a binder (`Binder Type` = `binder`) and once in a list (`Binder Type` = `list`), 48 rows in total. The shortened example in `example-csv/` shows the same structure with 3 rows in the binders `Main Binder` and `Sell List`. Listing every row would list each card twice, so the plugin shows one binder at a time (default: the first) and offers "All binders".
 
 ## Values
 
