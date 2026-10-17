@@ -1,6 +1,6 @@
 {
     "manifest_version": 3,
-    "name": "Cardmarket Listing Assistant",
+    "name": "Listing Assistant for Cardmarket",
     "version": "1.0.0",
     "description": "Pick a card from your ManaBox CSV and get Cardmarket's list-product form filled for it.",
     "icons": {

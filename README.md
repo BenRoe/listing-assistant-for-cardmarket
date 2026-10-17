@@ -1,4 +1,4 @@
-# Cardmarket Listing Assistant
+# Listing Assistant for Cardmarket
 
 Browser extension (Manifest V3, plain JavaScript, Firefox and Chromium) that helps to list cards from a ManaBox CSV on Cardmarket, one card at a time.
 
