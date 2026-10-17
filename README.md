@@ -64,6 +64,14 @@ Notes:
 - On Cardmarket the plugin only reads the page you have open and fills the form fields; the product pages it opens are normal page loads in your own tab. It never submits a listing for you.
 - Delete data with "Remove CSV" in the panel, "Clear listed flags" and "Clear Cardmarket ID cache" on the options page, or by removing the extension.
 
+## License and disclaimer
+
+MIT, see [LICENSE](LICENSE). Bundled: [Papa Parse](https://github.com/mholt/PapaParse) v5.0.2 (MIT), unmodified, in `lib/papaparse.min.js`.
+
+Not affiliated with, endorsed by or sponsored by Cardmarket, ManaBox or Scryfall. All names are trademarks of their owners.
+
+The privacy policy is also in [PRIVACY.md](PRIVACY.md).
+
 ## Documentation
 
 Research notes and design are in [.docs/readme.md](.docs/readme.md).
