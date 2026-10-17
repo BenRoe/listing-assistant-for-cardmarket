@@ -1,5 +1,9 @@
 # Listing Assistant for Cardmarket
 
+[![Release](https://img.shields.io/github/v/release/BenRoe/listing-assistant-for-cardmarket)](https://github.com/BenRoe/listing-assistant-for-cardmarket/releases/latest)
+[![License: MIT](https://img.shields.io/github/license/BenRoe/listing-assistant-for-cardmarket)](LICENSE)
+[![Release workflow](https://img.shields.io/github/actions/workflow/status/BenRoe/listing-assistant-for-cardmarket/release.yml?label=release%20build)](https://github.com/BenRoe/listing-assistant-for-cardmarket/actions/workflows/release.yml)
+
 Browser extension (Manifest V3, plain JavaScript, Firefox and Chromium) that helps to list cards from a ManaBox CSV on Cardmarket, one card at a time.
 
 1. Load one or more ManaBox CSV exports (list or collection) in the panel under the top search bar of any Cardmarket Magic page.
@@ -9,6 +13,9 @@ Browser extension (Manifest V3, plain JavaScript, Firefox and Chromium) that hel
 5. The row is marked as listed when Cardmarket confirms the listing. Every loaded CSV keeps its own listed flags.
 
 Cards are identified by the Scryfall ID in the ManaBox CSV, which Scryfall maps to the Cardmarket product ID, so there is no name matching.
+
+<a href="docs/manabox-csv-list.jpeg"><img src="docs/manabox-csv-list.jpeg" width="480" alt="Panel with a loaded ManaBox CSV above a Cardmarket product page with the pre-filled sell form"></a>
+<a href="docs/settings.jpeg"><img src="docs/settings.jpeg" width="330" alt="Settings page: price source, multiplier, rounding and minimum price"></a>
 
 ## Install for development
 
