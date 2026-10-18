@@ -33,6 +33,7 @@ Buttons: **Remove CSV** (removes the file currently shown together with its list
 - Price: median (default), lowest, or none of the offers shown for the filter.
 - Multiplier in percent (default 100), rounding step (0,01 or 0,05), minimum price (default 0,02).
 - Write "Misprint" into the comment when ManaBox flags it.
+- Stay logged in (default off): while a tab is open and logged in (a `Logout` link is on the page), fetch `/<lang>/Magic` every 30 minutes. Cardmarket's `idUser` cookie expires 1 hour after the last request; a plain GET renews it (measured 2026-10-18: expiry slid on every 5 minute ping, session alive after 22 minutes). Skipped on the login page; no password is stored.
 - Stored data: buttons "Clear listed flags" (removes `done`) and "Clear Cardmarket ID cache" (removes `scryfall`). CSV files are removed in the panel.
 
 The options page opens in its own tab (`open_in_tab: true`), not as a dialog on the extensions page.

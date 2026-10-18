@@ -1,5 +1,5 @@
 const ext = globalThis.browser ?? globalThis.chrome;
-const fields = ['priceSource', 'multiplier', 'round', 'minPrice', 'commentMisprint'];
+const fields = ['priceSource', 'multiplier', 'round', 'minPrice', 'commentMisprint', 'keepAlive'];
 
 function read() {
     const s = {};

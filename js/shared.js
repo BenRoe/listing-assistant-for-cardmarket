@@ -11,7 +11,8 @@
         multiplier: 100,          // percent
         round: 0.01,              // 0.01 | 0.05
         minPrice: 0.02,           // the form rejects 0,00 and 0,01
-        commentMisprint: true
+        commentMisprint: true,
+        keepAlive: false          // ping Cardmarket every 30 min while a tab is open so the 1 h idle logout never hits
     };
 
     const bool = (v) => String(v || '').trim().toLowerCase() === 'true';

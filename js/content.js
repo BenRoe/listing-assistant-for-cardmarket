@@ -14,7 +14,8 @@
         offerRow: '.article-row[id^="articleRow"]',
         offerPrice: '.price-container',
         ownRow: '[id^="stockRow"]',
-        successAlert: '.systemMessage.alert-success'
+        successAlert: '.systemMessage.alert-success',
+        logout: 'a[href*="Logout"]'
     };
     const SUBMIT_KEY = 'cmlp.submitAt';
     const SNAP_KEY = 'cmlp.formSnap';
@@ -22,6 +23,7 @@
     const SUBMIT_WINDOW = 60 * 1000;
     const FILL_MAX_AGE = 10 * 60 * 1000;
     const BATCH = 75;
+    const KEEP_ALIVE_EVERY = 30 * 60 * 1000;
 
     const state = {
         files: {}, rows: [], activeFile: '', scry: {}, done: {}, active: null,
@@ -513,12 +515,29 @@
         document.querySelector(SEL.mount)?.prepend(panel);
     }
 
+    // Cardmarket drops the login cookie after 1 h without a request; a plain page fetch renews it.
+    // Only runs while logged in, which also keeps it off the login and authenticator pages.
+    let keepAliveTimer = null;
+    function syncKeepAlive() {
+        clearInterval(keepAliveTimer);
+        keepAliveTimer = null;
+        if (!state.settings.keepAlive) return;
+        keepAliveTimer = setInterval(() => {
+            if (!document.querySelector(SEL.logout)) return;
+            fetch(`/${location.pathname.split('/')[1]}/Magic`, { credentials: 'same-origin', cache: 'no-store' }).catch(() => {});
+        }, KEEP_ALIVE_EVERY);
+    }
+
     ext.storage.onChanged.addListener((changes) => {
-        if (changes.settings) state.settings = { ...DEFAULT_SETTINGS, ...(changes.settings.newValue || {}) };
+        if (changes.settings) {
+            state.settings = { ...DEFAULT_SETTINGS, ...(changes.settings.newValue || {}) };
+            syncKeepAlive();
+        }
     });
 
     (async function init() {
         await loadState();
+        syncKeepAlive();
         buildPanel();
         render();
         if (document.querySelector(SEL.form)) document.documentElement.classList.add('cmlp-price-pick');

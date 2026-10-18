@@ -28,12 +28,14 @@ List Magic cards from your ManaBox CSV on Cardmarket, one at a time: click "Sear
 - Click an offer price to copy it into the sell form.
 - Filter changes keep your form values. Changing condition or language in the sell form updates the offers filter.
 - Sortable and filterable card table, binder selector for collection exports.
+- Optional "Stay logged in" (off by default): an open Cardmarket tab loads one page every 30 minutes, so the 1 hour idle logout does not hit. No password is stored.
 - Dark mode that follows Cardmarket's own theme.
 
 ## Privacy
 
 - No telemetry, analytics, tracking or accounts.
 - The only external request goes to `api.scryfall.com` and contains the Scryfall IDs of your CSV cards, to look up Cardmarket product IDs. Prices, quantities, file names and Cardmarket account data are never sent.
+- With "Stay logged in" on, the open Cardmarket tab also requests one Cardmarket page every 30 minutes.
 - CSVs, settings and listed flags stay in your browser's local extension storage.
 
 [Privacy policy](https://github.com/BenRoe/listing-assistant-for-cardmarket/blob/main/PRIVACY.md) · [Source code (MIT)](https://github.com/BenRoe/listing-assistant-for-cardmarket)
