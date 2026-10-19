@@ -1,4 +1,7 @@
 (function () {
+    // The authenticator page gets no panel and no keep-alive fetch.
+    if (/\/TwoFactorAuthentication(\/|$)/.test(location.pathname)) return;
+
     const ext = globalThis.browser ?? globalThis.chrome;
     const { CONDITION_ID, LANGUAGE_ID, DEFAULT_SETTINGS, buildRows, parsePrice, formatPrice, computePrice, buildSearchUrl } = CMLP;
 
