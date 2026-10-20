@@ -2,9 +2,15 @@
 
 ## Unit tests
 
-`node --test test/shared.test.mjs` (Node 24, no dependencies). Covers `js/shared.js`: CSV row building for list and collection exports (binders, unique row keys), price parsing/formatting, price panel order, price computation (source, foil rule, multiplier, minimum, none).
+`node --test test/shared.test.mjs test/labels.test.mjs test/labels-static.test.mjs` (Node 24, no dependencies). Covers:
 
-Status 2026-10-16: 5/5 passing.
+- `test/shared.test.mjs`: `js/shared.js`, CSV row building for list and collection exports (binders, unique row keys), price parsing/formatting, price panel order, price computation (source, foil rule, multiplier, minimum, none).
+- `test/labels.test.mjs`: `labels/core.js`, label layout, 1-bit bitmap and PNG encoding, ZIP, set filter/sort/search, validators.
+- `test/labels-static.test.mjs`: static checks of `labels/` (no extension API except the single storage read, one allowed request, font files and licences present).
+
+Smoke test of the label page: `PLAYWRIGHT_CORE=<path to playwright-core> node tools/smoke-labels.mjs` (headless Chromium over HTTP, needs the Playwright browser build; not run in CI).
+
+Status 2026-10-16: 5/5 passing (`shared.test.mjs`). Smoke test of the label page: passed 2026-10-20 (plan 01-04, picker, designer, csv and offline scenarios).
 
 ## Live run in Chromium (unpacked extension, logged-in session)
 
@@ -27,3 +33,4 @@ Setup in [playwright-setup.md](playwright-setup.md). Results after the Search-fl
 - Firefox (temporary add-on via `about:debugging`).
 - Rows without `cardmarket_id`, signed/altered flags, etched foil, products that offer only some languages, zero matching offers.
 - Failed submissions.
+- Edition labels: Firefox canvas and download, P-touch Editor on macOS, a real print on the PT-P710BT.

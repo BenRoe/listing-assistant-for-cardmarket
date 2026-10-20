@@ -30,13 +30,15 @@ List Magic cards from your ManaBox CSV on Cardmarket, one at a time: click "Sear
 - Sortable and filterable card table, binder selector for collection exports.
 - Optional "Stay logged in" (off by default): an open Cardmarket tab loads one page every 30 minutes, so the 1 hour idle logout does not hit. No password is stored.
 - Dark mode that follows Cardmarket's own theme.
+- **Edition labels**: a page to design storage-box labels with the set icon, name, code, foil mark and condition, with an exact preview and PNG or ZIP export for 24 mm label tape.
 
 ## Privacy
 
 - No telemetry, analytics, tracking or accounts.
-- The only external request goes to `api.scryfall.com` and contains the Scryfall IDs of your CSV cards, to look up Cardmarket product IDs. Prices, quantities, file names and Cardmarket account data are never sent.
+- The only external requests go to `api.scryfall.com`: the Scryfall IDs of your CSV cards, to look up Cardmarket product IDs, and, when you open the Edition labels page, one `GET /sets` for the public set list (cached 24 hours, no data sent). Prices, quantities, file names and Cardmarket account data are never sent.
 - With "Stay logged in" on, the open Cardmarket tab also requests one Cardmarket page every 30 minutes.
 - CSVs, settings and listed flags stay in your browser's local extension storage.
+- The label page keeps its preferences and the cached set list in its own `localStorage` (no CSV data). Set codes in the `#sets=` URL fragment are never sent anywhere. PNG and ZIP files are made in the page and never uploaded.
 
 [Privacy policy](https://github.com/BenRoe/listing-assistant-for-cardmarket/blob/main/PRIVACY.md) · [Source code (MIT)](https://github.com/BenRoe/listing-assistant-for-cardmarket)
 
@@ -48,4 +50,4 @@ Not affiliated with, endorsed by or sponsored by Cardmarket, ManaBox or Scryfall
 - Category: Shopping
 - License: MIT
 - Support site: https://github.com/BenRoe/listing-assistant-for-cardmarket
-- Notes to reviewer: No build step. The zip is the repository contents. `lib/papaparse.min.js` is Papa Parse v5.0.2, unmodified. A Cardmarket account is needed to see the sell form.
+- Notes to reviewer: No build step. The zip is the repository contents. `lib/papaparse.min.js` is Papa Parse v5.0.2, unmodified. A Cardmarket account is needed to see the sell form. The zip also contains `labels/` (static page, no remote code). Third-party files: `labels/lib/keyrune/keyrune.woff2` (Keyrune 3.19.0, OFL-1.1 font, GPL-3.0 glyphs, licence text included) and `labels/lib/cinzel/cinzel-bold-latin.woff2` (Cinzel Bold subset, OFL-1.1, licence included). No new permissions. `tools/` is not shipped.

@@ -22,7 +22,7 @@ Cards are identified by the Scryfall ID in the ManaBox CSV, which Scryfall maps 
 - Chrome and other Chromium browsers: `chrome://extensions` (Brave: `brave://extensions`, Edge: `edge://extensions`), enable developer mode, "Load unpacked", pick this folder. Tested in Chromium only.
 - Firefox: `about:debugging`, "This Firefox", "Load Temporary Add-on", pick `manifest.json`.
 
-Tests: `node --test test/shared.test.mjs`.
+Tests: `node --test test/shared.test.mjs test/labels.test.mjs test/labels-static.test.mjs`.
 
 ## Features
 
@@ -42,6 +42,14 @@ Tests: `node --test test/shared.test.mjs`.
 - **Nothing is submitted for you** and nothing leaves the browser except Scryfall IDs sent to `api.scryfall.com`.
 
 *Why Scryfall: the ManaBox CSV has no Cardmarket product ID, but every Scryfall card record includes it (`cardmarket_id`). The plugin sends only the Scryfall IDs from your CSV (up to 75 per request, once per card, then cached) and reads back the product ID.*
+
+## Edition labels
+
+The panel has an **Edition labels** button. It opens a page where you pick sets from the loaded CSV, search the Scryfall set list, or preselect sets with `labels.html#sets=ons,dom`. Each label can show the Keyrune set icon, the set name, the set code, a FOIL mark and a Cardmarket condition code (never a quantity). The preview is exact. Export a PNG for 24 mm tape (128 dots high, 180 dpi), one at a time or all as one ZIP.
+
+### Printing
+
+Open the PNG in Brother P-touch Editor at its original size (180 dpi) with 24 mm tape selected and the margins set to none or narrow, because the printer adds a feed margin at each end.
 
 ## Comparison with other tools
 
@@ -67,9 +75,10 @@ Notes:
 ## Privacy
 
 - **No telemetry, no analytics, no tracking, no accounts.** The plugin collects nothing about you.
-- **The only external request** is to `api.scryfall.com`, with the Scryfall IDs of your CSV cards, to look up Cardmarket product IDs. Like any web request it exposes your IP address to Scryfall. Nothing else is sent: not your prices, quantities, conditions, file names or Cardmarket account data.
+- **The only external requests** go to `api.scryfall.com`: the Scryfall IDs of your CSV cards, to look up Cardmarket product IDs, and, when you open the Edition labels page, one `GET https://api.scryfall.com/sets` for the public set list (cached for 24 hours). Like any web request they expose your IP address to Scryfall. Nothing else is sent: not your prices, quantities, conditions, file names or Cardmarket account data.
 - **Everything else stays in your browser**: the loaded CSVs, the ID cache, listed flags, settings and panel state live in the extension's local storage (`storage.local`, not synced to any account). The Cardmarket tab's `sessionStorage` holds a timestamp to detect a finished listing (no card data) and, for a few seconds around a filter reload, the sell form's values (quantity, language, condition, flags, comment, price); both are removed again and vanish with the tab.
 - On Cardmarket the plugin only reads the page you have open and fills the form fields; the product pages it opens are normal page loads in your own tab. It never submits a listing for you. With the optional "Stay logged in" setting, an open tab also requests one Cardmarket page (`/<lang>/Magic`) every 30 minutes, the same as a reload; the response is discarded.
+- The Edition labels page keeps its preferences and the cached public set list in its own `localStorage` (no CSV data, card names, quantities or prices). Set codes in the `#sets=` URL fragment are never sent to any server. PNG and ZIP files are made in the page and never uploaded.
 - Delete data with "Remove CSV" in the panel, "Clear listed flags" and "Clear Cardmarket ID cache" on the options page, or by removing the extension.
 
 ## Contributing
@@ -77,14 +86,14 @@ Notes:
 - **Bug reports:** open a GitHub issue with the title prefix `[Bug]`, for example `[Bug] Price not filled for foil cards`.
 - **Questions:** open a GitHub issue with the title prefix `[QA]`.
 - **Feature requests:** open a GitHub issue with the title prefix `[Feature]`, for example `[Feature] Remember the last used binder`.
-- **Fixes:** pull requests that fix a bug are welcome. Run `node --test test/shared.test.mjs` before you open one.
+- **Fixes:** pull requests that fix a bug are welcome. Run `node --test test/shared.test.mjs test/labels.test.mjs test/labels-static.test.mjs` before you open one.
 - **New features:** please discuss them in a `[Feature]` issue first. A pull request for a feature that was not agreed in an issue may be closed.
 
 ## License and disclaimer
 
-MIT, see [LICENSE](LICENSE). Bundled: [Papa Parse](https://github.com/mholt/PapaParse) v5.0.2 (MIT), unmodified, in `lib/papaparse.min.js`.
+MIT, see [LICENSE](LICENSE). Bundled: [Papa Parse](https://github.com/mholt/PapaParse) v5.0.2 (MIT), unmodified, in `lib/papaparse.min.js`. [Keyrune](https://github.com/andrewgioia/keyrune) (set icons) v3.19.0 in `labels/lib/keyrune/`: font files SIL OFL-1.1, glyphs and code GPL-3.0, with its licence text; the symbols are trademarks of Wizards of the Coast. Cinzel Bold (label text) in `labels/lib/cinzel/`: SIL OFL-1.1, with its licence and FONTLOG.
 
-Not affiliated with, endorsed by or sponsored by Cardmarket, ManaBox or Scryfall. All names are trademarks of their owners.
+Not affiliated with, endorsed by or sponsored by Cardmarket, ManaBox or Scryfall. All names are trademarks of their owners. Magic: The Gathering, its names and set symbols are trademarks of Wizards of the Coast; this project is not affiliated with them.
 
 The privacy policy is also in [PRIVACY.md](PRIVACY.md).
 

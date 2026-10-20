@@ -38,6 +38,15 @@ Buttons: **Remove CSV** (removes the file currently shown together with its list
 
 The options page opens in its own tab (`open_in_tab: true`), not as a dialog on the extensions page.
 
+## Edition label page
+
+- `labels/` is a static folder (page, `core.js`, `labels.js`, `csv-sets.js`, fonts in `lib/`). It is opened through the background message `openLabels`, which creates a tab with `labels/labels.html`.
+- `core.js` is the pure dual-environment layer (Node tests and browser): layout, 1-bit bitmap, PNG and ZIP encoding. The canvas preview paints the same bitmap that the PNG contains, so preview equals export.
+- The only extension-API call is one guarded read of the loaded CSV in `csv-sets.js` (`storage.local.get`); without it (hosted copy, ordinary page) the page falls back to the Scryfall set list and the `#sets=` fragment.
+- Page storage (`localStorage`): `cmlp.labels.settings` (options) and `cmlp.labels.sets` (public set list with timestamp, 24 h).
+- The only request is `GET https://api.scryfall.com/sets`. No new permissions (the host permission for `api.scryfall.com` exists already).
+- Export is 1-bit PNG, 128 px high (24 mm tape), 180 dpi.
+
 ## Permissions
 
 `storage`; host permission `https://api.scryfall.com/*` (background fetch). Content script on `https://www.cardmarket.com/*/Magic/*`.
