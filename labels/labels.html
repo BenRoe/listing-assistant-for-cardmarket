@@ -29,6 +29,15 @@
         .toolbar { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; margin-bottom: 16px; }
         .toolbar input[type=number] { width: 6ch; }
         #empty { color: GrayText; }
+        .card { border: 1px solid GrayText; border-radius: 6px; padding: 12px; margin: 0 0 16px; }
+        .card-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+        .card-title { margin: 0 0 8px; }
+        .card-options { display: flex; flex-wrap: wrap; gap: 8px 16px; margin-bottom: 8px; }
+        .strip { background: #fff; padding: 8px; overflow-x: auto; border-radius: 4px; }
+        canvas.preview { display: block; image-rendering: pixelated; }
+        .caption { margin: 8px 0 4px; color: GrayText; font-size: 12px; }
+        .notices { margin: 0 0 8px; padding-left: 18px; color: #b45309; }
+        .notices:empty { display: none; }
     </style>
 </head>
 <body>

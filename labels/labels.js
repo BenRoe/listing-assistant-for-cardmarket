@@ -2,6 +2,12 @@
 // Each card previews the exact 1-bit bitmap that gets exported. All page data reaches the DOM through textContent only.
 const CODE_SAMPLE_FONT = '700 44px Cinzel';
 const SETS_TTL_MS = 24 * 60 * 60 * 1000;
+const NOTICE_TEXT = {
+    'no-glyph': 'No Keyrune icon exists for this set, so the label has no icon.',
+    'empty': 'Nothing to show: switch on the icon, name or code.',
+    'over-max': 'The label is longer than 100 mm.',
+    'overflow-fixed': 'The content is wider than the fixed length and is cut off at the right edge.'
+};
 
 const state = {
     settings: LabelCore.normalizeSettings(null),
@@ -197,18 +203,47 @@ function buildCard(rec) {
     const card = document.createElement('div');
     card.className = 'card';
     card.dataset.code = rec.code;
+    const head = Object.assign(document.createElement('div'), { className: 'card-head' });
     const title = Object.assign(document.createElement('h2'), { className: 'card-title' });
     const remove = Object.assign(document.createElement('button'), { type: 'button', textContent: 'Remove' });
     remove.dataset.action = 'remove';
     remove.addEventListener('click', () => toggleSet(rec.code, false));
+    head.append(title, remove);
+
+    const foil = Object.assign(document.createElement('input'), { type: 'checkbox', className: 'foil', checked: rec.foil });
+    const foilLabel = document.createElement('label');
+    foilLabel.append(foil, ' Foil');
+    const cond = Object.assign(document.createElement('select'), { className: 'cond' });
+    for (const c of ['none', ...LabelCore.CONDITIONS]) cond.append(Object.assign(document.createElement('option'), { value: c, textContent: c }));
+    cond.value = rec.cond;
+    const condLabel = document.createElement('label');
+    condLabel.append('Condition ', cond);
+    const options = Object.assign(document.createElement('div'), { className: 'card-options' });
+    options.append(foilLabel, condLabel);
+    // foil and condition are per card; the last used values become the defaults of newly ticked sets (D-13)
+    const changed = () => {
+        rec.foil = foil.checked;
+        rec.cond = LabelCore.normalizeCondition(cond.value);
+        state.settings = { ...state.settings, foil: rec.foil, cond: rec.cond };
+        saveSettings();
+        renderCard(rec).catch((e) => showError(rec, e));
+    };
+    foil.addEventListener('change', changed);
+    cond.addEventListener('change', changed);
+
     const strip = Object.assign(document.createElement('div'), { className: 'strip' });
-    const canvas = Object.assign(document.createElement('canvas'), { className: 'preview' });
-    strip.append(canvas);
+    strip.append(Object.assign(document.createElement('canvas'), { className: 'preview' }));
+    const caption = Object.assign(document.createElement('p'), { className: 'caption' });
+    const notices = Object.assign(document.createElement('ul'), { className: 'notices' });
     const download = Object.assign(document.createElement('button'), { type: 'button', textContent: 'Download PNG' });
     download.dataset.action = 'download';
-    download.addEventListener('click', () => downloadOne(rec.code));
-    card.append(title, remove, strip, download);
+    download.addEventListener('click', () => downloadOne(rec.code).catch((e) => showError(rec, e)));
+    card.append(head, options, strip, caption, notices, download);
     return card;
+}
+
+function setNotices(rec, texts) {
+    rec.el.querySelector('ul.notices').replaceChildren(...texts.map((t) => Object.assign(document.createElement('li'), { textContent: t })));
 }
 
 async function renderCard(rec) {
@@ -225,7 +260,11 @@ async function renderCard(rec) {
     canvas.style.width = `${bitmap.width * 3}px`;
     canvas.style.height = `${bitmap.height * 3}px`;
     canvas.getContext('2d').putImageData(new ImageData(LabelCore.bitmapToRgba(bitmap), bitmap.width, bitmap.height), 0, 0);
+    rec.el.querySelector('.caption').textContent = LabelCore.captionFor(bitmap.width);
+    setNotices(rec, layout.warnings.map((w) => NOTICE_TEXT[w]));
+    rec.el.querySelector('button[data-action="download"]').disabled = layout.empty;
     rec.el.dataset.ready = '1';
+    updateChrome();
 }
 
 function reorderCards() {
@@ -235,6 +274,7 @@ function reorderCards() {
 
 function updateChrome() {
     $('empty').hidden = state.ticked.size > 0;
+    $('downloadAll').disabled = state.building || ![...state.ticked.values()].some((r) => r.result && !r.result.layout.empty);
 }
 
 function toggleSet(code, on) {
@@ -255,7 +295,7 @@ function toggleSet(code, on) {
 }
 
 function showError(rec, e) {
-    rec.el.querySelector('.card-title').textContent += ` (render failed: ${e.message || e})`;
+    setNotices(rec, [`Render failed: ${e.message || e}`]);
 }
 
 function renderAllCards() {
@@ -268,12 +308,39 @@ function renderAll() {
     renderAllCards();
 }
 
+async function renderFresh(rec) {
+    const set = currentSet(rec.code);
+    const { bitmap, layout } = await renderBitmap(set, rec);   // fresh render, never a cached bitmap
+    return { bitmap, layout, name: LabelCore.fileName({ code: rec.code, name: set.name, foil: rec.foil, cond: rec.cond }) };
+}
+
 async function downloadOne(code) {
-    const rec = state.ticked.get(code);
-    const set = currentSet(code);
-    const { bitmap } = await renderBitmap(set, rec);   // fresh render, never a cached bitmap
-    const name = LabelCore.fileName({ code, name: set.name, foil: rec.foil, cond: rec.cond });
+    const { bitmap, name } = await renderFresh(state.ticked.get(code));
     downloadBytes(LabelCore.encodePng1bit(bitmap, LabelCore.DPI), name, 'image/png');
+}
+
+// One ZIP built fully in memory and saved as one download; the flag ignores clicks while a build runs
+async function downloadAll() {
+    if (state.building) return;
+    state.building = true;
+    setNote('zip', '');
+    updateChrome();
+    try {
+        const files = [];
+        for (const el of [...$('cards').children]) {
+            const rec = state.ticked.get(el.dataset.code);
+            const fresh = await renderFresh(rec);
+            if (!fresh.layout.empty) files.push({ name: fresh.name, data: LabelCore.encodePng1bit(fresh.bitmap, LabelCore.DPI) });
+        }
+        if (!files.length) return;
+        const names = LabelCore.uniqueNames(files.map((f) => f.name));
+        downloadBytes(LabelCore.zipStore(files.map((f, i) => ({ name: names[i], data: f.data }))), 'edition-labels.zip', 'application/zip');
+    } catch (e) {
+        setNote('zip', `ZIP failed: ${e.message || e}`);
+    } finally {
+        state.building = false;
+        updateChrome();
+    }
 }
 
 // ---- global options -----------------------------------------------------------------------------
@@ -306,6 +373,7 @@ function readControls(writeBack) {
     for (const id of ['optIcon', 'optName', 'optCode']) $(id).addEventListener('change', () => readControls(false));
     $('fixedMm').addEventListener('input', () => readControls(false));
     $('fixedMm').addEventListener('change', () => readControls(true));
+    $('downloadAll').addEventListener('click', downloadAll);
     $('search').addEventListener('input', (e) => { state.query = e.target.value; renderLists(); });
     $('showAll').addEventListener('change', (e) => { state.showAll = e.target.checked; renderLists(); });
     for (const id of ['csvSets', 'allSets']) {

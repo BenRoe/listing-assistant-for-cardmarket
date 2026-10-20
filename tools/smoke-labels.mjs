@@ -6,6 +6,9 @@ import { createRequire } from 'node:module';
 import { extname, join, normalize, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import zlib from 'node:zlib';
+import { execFileSync } from 'node:child_process';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 
 const require = createRequire(import.meta.url);
 let chromium;
@@ -72,6 +75,26 @@ const SET_FIXTURE = { object: 'list', has_more: false, data: [
     { code: 'mgm', name: 'Mini Game Set', set_type: 'minigame', released_at: '2005-01-01', digital: false },
     { code: 'dig', name: 'Digital Only', set_type: 'expansion', released_at: '2019-01-01', digital: true }
 ] };
+
+async function saveDownload(page, action) {
+    const [download] = await Promise.all([page.waitForEvent('download'), action()]);
+    const chunks = [];
+    for await (const c of await download.createReadStream()) chunks.push(c);
+    return { name: download.suggestedFilename(), bytes: new Uint8Array(Buffer.concat(chunks)) };
+}
+
+const READY = '#cards .card[data-ready="1"]';
+// New page on the labels page; reset forgets stored options first so scenarios start from the defaults
+async function openLabels(env, base, hash, reset = true) {
+    const page = await env.context.newPage();
+    await page.goto(`${base}/labels.html${hash}`);
+    if (reset) {
+        await page.evaluate(() => localStorage.removeItem('cmlp.labels.settings'));
+        await page.reload();
+    }
+    if (hash) await page.waitForSelector(READY);
+    return page;
+}
 
 const rowCodes = (page, list) => page.evaluate((id) => [...document.querySelectorAll(`#${id} .set-row`)].map((r) => r.dataset.code), list);
 
@@ -147,6 +170,121 @@ const scenarios = [
         expect(ticked.join() === 'ons,dom', `ticked ${ticked}`);
         await second.click('#allSets input[data-code="dom"]');
         expect(await second.locator('#cards .card').count() === 1, 'untick removes the card');
+    }],
+    ['designer', async (page0, base, expect, env) => {
+        const inkOf = (png) => { const a = []; for (let y = 0; y < png.height; y++) for (let x = 0; x < png.width; x++) a.push(png.ink(x, y)); return a; };
+        const inkRange = (png, x0, x1, y0, y1) => { let n = 0; for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) n += png.ink(x, y); return n; };
+        const png = async (page) => readPng((await saveDownload(page, () => page.click('button[data-action="download"]'))).bytes);
+
+        // (a) caption and 3x pixelated preview
+        let page = await openLabels(env, base, '#sets=ons');
+        expect(/^\d+ x 18 mm printable \(24 mm tape\)$/.test(await page.textContent('.caption')), `caption ${await page.textContent('.caption')}`);
+        const view = await page.evaluate(() => {
+            const c = document.querySelector('canvas.preview'), css = getComputedStyle(c);
+            return { w: c.width, cssW: css.width, cssH: css.height, ir: css.imageRendering };
+        });
+        expect(view.cssW === `${view.w * 3}px` && view.cssH === '384px' && view.ir === 'pixelated', `preview ${JSON.stringify(view)}`);
+
+        // (b) preview ink equals PNG ink
+        const shown = await page.evaluate(() => {
+            const c = document.querySelector('canvas.preview');
+            const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+            const out = [];
+            for (let i = 0; i < d.length; i += 4) out.push(d[i] < 128 ? 1 : 0);
+            return out;
+        });
+        const first = await png(page);
+        const printed = inkOf(first);
+        expect(printed.length === shown.length && printed.every((v, i) => v === shown[i]), 'PNG ink differs from the preview');
+        expect(printed.some((v) => v === 1), 'PNG has no ink');
+
+        // (c) file names
+        await page.check('.card input.foil');
+        await page.selectOption('.card select.cond', 'NM');
+        await page.waitForSelector(READY);
+        let saved = await saveDownload(page, () => page.click('button[data-action="download"]'));
+        expect(saved.name === 'ons-onslaught-foil-nm.png', `name ${saved.name}`);
+        await page.uncheck('.card input.foil');
+        await page.selectOption('.card select.cond', 'none');
+        await page.waitForSelector(READY);
+        saved = await saveDownload(page, () => page.click('button[data-action="download"]'));
+        expect(saved.name === 'ons-onslaught.png', `name ${saved.name}`);
+
+        // (d) set without a glyph
+        page = await openLabels(env, base, '#sets=trk');
+        expect((await page.textContent('ul.notices')).includes('No Keyrune icon'), 'no-glyph notice');
+        expect(inkRange(await png(page), 0, 100, 0, 128) > 0, 'text-only PNG has no ink');
+        await page.uncheck('#optIcon');
+        await page.waitForSelector(READY);
+        expect(await page.locator('ul.notices li').count() === 0, 'notice stays with the icon off');
+
+        // (e) fixed length: cut off, and content left aligned on a longer tape
+        page = await openLabels(env, base, '#sets=clb');
+        await page.fill('#fixedMm', '30');
+        await page.waitForSelector(READY);
+        let p = await png(page);
+        expect(p.width === 213, `fixed 30 mm width ${p.width}`);
+        expect((await page.textContent('ul.notices')).includes('cut off'), 'overflow notice');
+        page = await openLabels(env, base, '#sets=ons');
+        await page.fill('#fixedMm', '100');
+        await page.waitForSelector(READY);
+        p = await png(page);
+        expect(p.width === 709, `fixed 100 mm width ${p.width}`);
+        expect(inkRange(p, 560, 709, 0, 128) === 0 && inkRange(p, 0, 560, 0, 128) > 0, 'content is left aligned');
+
+        // (f) the longest name is not clipped at automatic length
+        page = await openLabels(env, base, '#sets=tmt');
+        p = await png(page);
+        expect(p.width <= 709, `tmt width ${p.width}`);
+        expect(inkRange(p, p.width - 8, p.width, 0, 128) === 0, 'ink in the last 8 columns');
+        expect(inkRange(p, 0, p.width, 0, 4) === 0 && inkRange(p, 0, p.width, 124, 128) === 0, 'ink in the top or bottom 4 rows');
+
+        // (g) nothing to show
+        page = await openLabels(env, base, '#sets=ons');
+        for (const id of ['#optIcon', '#optName', '#optCode']) await page.uncheck(id);
+        await page.waitForSelector(READY);
+        expect((await page.textContent('ul.notices')).includes('Nothing to show'), 'empty notice');
+        expect(await page.locator('button[data-action="download"]').isDisabled(), 'card download disabled');
+        expect(await page.locator('#downloadAll').isDisabled(), 'download all disabled');
+
+        // (h) ZIP in card order
+        page = await openLabels(env, base, '#sets=clb,dom,ons');
+        await page.waitForFunction(() => document.querySelectorAll('#cards .card[data-ready="1"]').length === 3);
+        await page.check('.card[data-code="ons"] input.foil');
+        await page.selectOption('.card[data-code="ons"] select.cond', 'NM');
+        await page.waitForSelector('.card[data-code="ons"][data-ready="1"]');
+        const zip = await saveDownload(page, () => page.click('#downloadAll'));
+        expect(zip.name === 'edition-labels.zip', `zip name ${zip.name}`);
+        const dir = await mkdtemp(join(tmpdir(), 'smoke-labels-'));
+        try {
+            const file = join(dir, zip.name);
+            await writeFile(file, zip.bytes);
+            const names = execFileSync('unzip', ['-Z1', file]).toString().trim().split('\n');
+            expect(names.join() === 'ons-onslaught-foil-nm.png,dom-dominaria.png,clb-commander-legends-battle-for-baldurs-gate.png', `zip entries ${names}`);
+            execFileSync('unzip', ['-tq', file]);
+            for (const n of names) {
+                const entry = readPng(new Uint8Array(execFileSync('unzip', ['-p', file, n], { maxBuffer: 1 << 24 })));
+                expect(entry.height === 128, `${n} height ${entry.height}`);
+            }
+        } finally {
+            await rm(dir, { recursive: true, force: true });
+        }
+
+        // (i) options survive a reload, no set is ticked, last foil and condition become the defaults
+        page = await openLabels(env, base, '#sets=ons');
+        await page.uncheck('#optName');
+        await page.fill('#fixedMm', '50');
+        await page.check('.card input.foil');
+        await page.selectOption('.card select.cond', 'NM');
+        await page.waitForSelector(READY);
+        const again = await openLabels(env, base, '', false);
+        await again.waitForSelector('#allSets .set-row');
+        expect(!(await again.isChecked('#optName')) && await again.isChecked('#optIcon') && await again.isChecked('#optCode'), 'switches restored');
+        expect(await again.inputValue('#fixedMm') === '50', 'fixed length restored');
+        expect(await again.locator('.card').count() === 0, 'no card after reload');
+        await again.check('#allSets input[data-code="dom"]');
+        await again.waitForSelector(READY);
+        expect(await again.isChecked('.card input.foil') && await again.inputValue('.card select.cond') === 'NM', 'defaults for a new card');
     }],
     ['offline', async (page, base, expect, env) => {
         env.sets.mode = 'abort';
