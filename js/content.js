@@ -473,6 +473,7 @@
                 el('button', { type: 'button', textContent: 'Load ManaBox CSV', onclick: () => file.click() }),
                 el('button', { type: 'button', textContent: 'Remove CSV', onclick: removeCsv }),
                 el('button', { type: 'button', textContent: 'Settings', onclick: () => ext.runtime.sendMessage({ type: 'openOptions' }) }),
+                el('button', { type: 'button', textContent: 'Edition labels', onclick: () => ext.runtime.sendMessage({ type: 'openLabels' }) }),
                 file
             ),
             el('div', { className: 'cmlp-bar' }, ui.file, filter, ui.binder, el('label', {}, hide, ' hide listed')),

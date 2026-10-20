@@ -41,4 +41,7 @@ ext.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     if (msg?.type === 'openOptions') {
         ext.runtime.openOptionsPage();
     }
+    if (msg?.type === 'openLabels') {
+        ext.tabs.create({ url: ext.runtime.getURL('labels/labels.html') });
+    }
 });
