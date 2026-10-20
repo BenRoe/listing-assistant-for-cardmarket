@@ -224,9 +224,9 @@ test('layoutLabel: name large, code small, same left edge', () => {
     assert.deepEqual(r.ops.map((o) => o.type), ['glyph', 'text', 'text']);
     const [name, code] = textOps(r);
     assert.equal(name.text, 'Onslaught');
-    assert.ok(name.font.includes('700 44px Cinzel'));
+    assert.ok(name.font.includes('700 60px Cinzel'));
     assert.equal(code.text, 'ONS');
-    assert.equal(sizeOf(code), 22);
+    assert.equal(sizeOf(code), 30);
     assert.equal(code.x, name.x);
     assert.ok(code.y > name.y);
     assert.deepEqual(r.warnings, []);
@@ -259,8 +259,14 @@ test('[CONT-01/empty] name off or empty: the code becomes the large line and is 
         const t = textOps(layoutLabel(input, fakeMeasure));
         assert.equal(t.length, 1);
         assert.equal(t[0].text, 'ONS');
-        assert.equal(sizeOf(t[0]), 44);
+        assert.equal(sizeOf(t[0]), 104);
     }
+});
+
+test('[CONT-01/size] promoted code is larger still, 76 px when badges share the height', () => {
+    const t = textOps(layoutLabel({ ...ALL_ON, showName: false, foil: true, cond: 'NM' }, fakeMeasure));
+    assert.equal(t[0].text, 'ONS');
+    assert.equal(sizeOf(t[0]), 76);
 });
 
 test('[CONT-01/adjacency] nothing to draw: empty label of minimum width; ICON_GAP only with icon and text', () => {
@@ -295,7 +301,7 @@ test('[CONT-02/empty] foil false: no FOIL text, no box, no extra gap', () => {
     const both = layoutLabel({ ...ALL_ON, foil: true, cond: 'NM' }, fakeMeasure);
     const condPlain = plain.ops.find((o) => o.type === 'box');
     const code = textOps(plain)[1];
-    assert.ok(Math.abs(condPlain.x - (code.x + 22 * 0.6 * 3) - 10) < 1e-9);   // one gap after the code, nothing for the missing FOIL
+    assert.ok(Math.abs(condPlain.x - (code.x + 30 * 0.6 * 3) - 10) < 1e-9);   // one gap after the code, nothing for the missing FOIL
     assert.ok(both.ops.filter((o) => o.type === 'box')[1].x > condPlain.x, 'FOIL pushes the condition box right');
 });
 
@@ -348,23 +354,6 @@ test('[ICON-02/ordering] warnings follow the fixed order', () => {
     assert.deepEqual([noGlyphEmpty.empty, noGlyphEmpty.warnings], [true, ['no-glyph', 'empty']]);
     const overMax = layoutLabel({ ...ALL_ON, glyph: null, name: 'W'.repeat(60) }, fakeMeasure);
     assert.deepEqual(overMax.warnings, ['no-glyph', 'over-max']);
-    const overFixed = layoutLabel({ ...ALL_ON, glyph: null, name: 'W'.repeat(60), fixedMm: 30 }, fakeMeasure);
-    assert.deepEqual(overFixed.warnings, ['no-glyph', 'overflow-fixed']);
-});
-
-test('layoutLabel: fixed length is exact, clamped, left aligned', () => {
-    const short = { ...ALL_ON, name: 'Alara' };
-    const auto = layoutLabel(short, fakeMeasure);
-    const fixed = layoutLabel({ ...short, fixedMm: 60 }, fakeMeasure);
-    assert.equal(fixed.width, 425);
-    assert.equal(mmToDots(60), 425);
-    assert.deepEqual(fixed.ops, auto.ops);
-    assert.equal(layoutLabel({ ...short, fixedMm: 5 }, fakeMeasure).width, 174);
-    assert.equal(layoutLabel({ ...short, fixedMm: 2000 }, fakeMeasure).width, 7086);
-    const tight = layoutLabel({ ...ALL_ON, name: BALDUR, fixedMm: 30 }, fakeMeasure);
-    assert.equal(tight.width, 213);
-    assert.deepEqual(tight.warnings, ['overflow-fixed']);
-    for (const bad of [0, -3, NaN, '60', null]) assert.equal(layoutLabel({ ...short, fixedMm: bad }, fakeMeasure).width, auto.width, String(bad));
 });
 
 test('layoutLabel: maxMm limits the automatic width by wrapping; an unbreakable word reports over-max', () => {
@@ -653,12 +642,44 @@ test('trimSets: keeps five validated fields, drops malformed entries, throws on 
 });
 
 test('normalizeSettings: defaults, real booleans only, clamped length, whitelisted condition', () => {
-    const defaults = { icon: true, name: true, code: true, fixedMm: null, foil: false, cond: 'none' };
+    const defaults = { icon: true, name: true, code: true, maxMm: null, foil: false, cond: 'none' };
     for (const raw of [undefined, null, 'x', 5, [], true]) assert.deepEqual(normalizeSettings(raw), defaults, String(raw));
-    assert.deepEqual(normalizeSettings({ icon: false, name: 'no', code: 0, foil: 1, cond: 'nm', fixedMm: 60, evil: '<script>', __proto__: { x: 1 } }),
-        { icon: false, name: true, code: true, fixedMm: 60, foil: false, cond: 'NM' });
-    assert.equal(normalizeSettings({ fixedMm: 5 }).fixedMm, 24.5);
-    assert.equal(normalizeSettings({ fixedMm: 5000 }).fixedMm, 1000);
-    for (const bad of [0, -4, NaN, Infinity, '60', null, {}]) assert.equal(normalizeSettings({ fixedMm: bad }).fixedMm, null, String(bad));
+    assert.deepEqual(normalizeSettings({ icon: false, name: 'no', code: 0, foil: 1, cond: 'nm', maxMm: 60, evil: '<script>', __proto__: { x: 1 } }),
+        { icon: false, name: true, code: true, maxMm: 60, foil: false, cond: 'NM' });
+    assert.equal(normalizeSettings({ maxMm: 150 }).maxMm, 150);
+    assert.equal(normalizeSettings({ maxMm: 5 }).maxMm, 24.5);
+    for (const bad of [0, -4, NaN, '100', null]) assert.equal(normalizeSettings({ maxMm: bad }).maxMm, null, String(bad));
+    assert.equal(normalizeSettings({ maxMm: 5000 }).maxMm, 1000);
+    assert.equal(normalizeSettings({ fixedMm: 60 }).fixedMm, undefined, 'the fixed length setting is gone');
     assert.equal(normalizeSettings({ foil: true }).foil, true);
+});
+
+test('layoutLabel: with a max length set the name shrinks until it fits, down to 16 px', () => {
+    const unset = layoutLabel({ ...ALL_ON, name: BALDUR, glyph: null }, fakeMeasure);
+    const set = layoutLabel({ ...ALL_ON, name: BALDUR, glyph: null, maxMm: 40 }, fakeMeasure);
+    const sizes = (r) => textOps(r).filter((o) => o.text !== 'ONS').map(sizeOf);
+    assert.ok(Math.max(...sizes(set)) < Math.max(...sizes(unset)), 'smaller than the default fit');
+    assert.ok(Math.min(...sizes(set)) >= 16);
+    assert.ok(set.width <= mmToDots(40), `width ${set.width}`);
+    assert.ok(!set.warnings.includes('over-max'));
+    const hopeless = layoutLabel({ ...ALL_ON, name: 'W'.repeat(80), glyph: null, maxMm: 40 }, fakeMeasure);
+    assert.deepEqual(sizes(hopeless), [16]);
+    assert.ok(hopeless.warnings.includes('over-max'));
+});
+
+test('layoutLabel: a larger max length lets a long name stay on one line, a smaller one wraps it sooner', () => {
+    const name = 'Dominaria United Commander';
+    const wide = textOps(layoutLabel({ ...ALL_ON, name, maxMm: 160 }, fakeMeasure));
+    assert.equal(wide.filter((o) => o.text !== 'ONS').length, 1, 'one line at 160 mm');
+    const narrow = textOps(layoutLabel({ ...ALL_ON, name, maxMm: 60 }, fakeMeasure));
+    assert.ok(narrow.filter((o) => o.text !== 'ONS').length > 1, 'wrapped at 60 mm');
+});
+
+test('[CONT-01/size] a name with no small line below it uses the large tier, 104 px when it fits', () => {
+    const pick = (name) => sizeOf(textOps(layoutLabel({ ...ALL_ON, name, glyph: null, showCode: false }, fakeMeasure))[0]);
+    assert.equal(pick('W'.repeat(9)), 104);
+    assert.equal(pick('W'.repeat(11)), 92);
+    assert.equal(pick('W'.repeat(13)), 80);
+    assert.equal(pick('W'.repeat(15)), 68);
+    assert.equal(sizeOf(textOps(layoutLabel({ ...ALL_ON, name: 'Ons', glyph: null, showCode: false, foil: true }, fakeMeasure))[0]), 60, 'with a badge line the normal tier applies');
 });

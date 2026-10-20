@@ -5,8 +5,7 @@ const SETS_TTL_MS = 24 * 60 * 60 * 1000;
 const NOTICE_TEXT = {
     'no-glyph': 'No Keyrune icon exists for this set, so the label has no icon.',
     'empty': 'Nothing to show: switch on the icon, name or code.',
-    'over-max': 'The label is longer than 100 mm.',
-    'overflow-fixed': 'The content is wider than the fixed length and is cut off at the right edge.'
+    'over-max': () => `The label is longer than ${state.settings.maxMm ?? 100} mm.`
 };
 
 const state = {
@@ -177,7 +176,7 @@ async function renderBitmap(set, rec) {
     const s = state.settings;
     const layout = LabelCore.layoutLabel({
         code: set.code, name: set.name, glyph,
-        showIcon: s.icon, showName: s.name, showCode: s.code, fixedMm: s.fixedMm,
+        showIcon: s.icon, showName: s.name, showCode: s.code, maxMm: s.maxMm ?? undefined,
         foil: rec.foil, cond: rec.cond
     }, measureWith(ctx));
     canvas.width = layout.width;
@@ -257,11 +256,11 @@ async function renderCard(rec) {
     const canvas = rec.el.querySelector('canvas.preview');
     canvas.width = bitmap.width;
     canvas.height = bitmap.height;
-    canvas.style.width = `${bitmap.width * 3}px`;
-    canvas.style.height = `${bitmap.height * 3}px`;
+    canvas.style.width = `${bitmap.width}px`;
+    canvas.style.height = `${bitmap.height}px`;
     canvas.getContext('2d').putImageData(new ImageData(LabelCore.bitmapToRgba(bitmap), bitmap.width, bitmap.height), 0, 0);
     rec.el.querySelector('.caption').textContent = LabelCore.captionFor(bitmap.width);
-    setNotices(rec, layout.warnings.map((w) => NOTICE_TEXT[w]));
+    setNotices(rec, layout.warnings.map((w) => (typeof NOTICE_TEXT[w] === 'function' ? NOTICE_TEXT[w]() : NOTICE_TEXT[w])));
     rec.el.querySelector('button[data-action="download"]').disabled = layout.empty;
     rec.el.dataset.ready = '1';
     updateChrome();
@@ -350,15 +349,15 @@ function applySettingsToControls() {
     $('optIcon').checked = s.icon;
     $('optName').checked = s.name;
     $('optCode').checked = s.code;
-    $('fixedMm').value = s.fixedMm === null ? '' : String(s.fixedMm);
+    $('maxMm').value = s.maxMm === null ? '' : String(s.maxMm);
 }
 
 function readControls(writeBack) {
-    const raw = $('fixedMm').value.trim();
+    const rawMax = $('maxMm').value.trim();
     state.settings = LabelCore.normalizeSettings({
         ...state.settings,
         icon: $('optIcon').checked, name: $('optName').checked, code: $('optCode').checked,
-        fixedMm: raw === '' ? null : Number(raw)
+        maxMm: rawMax === '' ? null : Number(rawMax)
     });
     if (writeBack) applySettingsToControls();
     saveSettings();
@@ -371,8 +370,8 @@ function readControls(writeBack) {
     loadSettings();
     applySettingsToControls();
     for (const id of ['optIcon', 'optName', 'optCode']) $(id).addEventListener('change', () => readControls(false));
-    $('fixedMm').addEventListener('input', () => readControls(false));
-    $('fixedMm').addEventListener('change', () => readControls(true));
+    $('maxMm').addEventListener('input', () => readControls(false));
+    $('maxMm').addEventListener('change', () => readControls(true));
     $('downloadAll').addEventListener('click', downloadAll);
     $('search').addEventListener('input', (e) => { state.query = e.target.value; renderLists(); });
     $('showAll').addEventListener('change', (e) => { state.showAll = e.target.checked; renderLists(); });

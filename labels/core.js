@@ -134,16 +134,21 @@
     const CONDITIONS = ['MT', 'NM', 'EX', 'GD', 'LP', 'PL', 'PO'];
     const MAX_DOTS = 7086;           // 1000 mm, the printer maximum
     const DEFAULT_MAX_MM = 100;
-    const SMALL_SIZE = 22;
-    const BIG_SIZE = 44;
+    const SMALL_SIZE = 30;
+    const SMALL_WRAPPED_SIZE = 22;   // a two-line name leaves little height
+    const BIG_SIZES = [60, 52, 44];
+    // a big line with no small line below it has the most height; a promoted code is short, so it can be larger still with one
+    const ALONE_SIZES = [104, 92, 80, 68, 60, 52, 44];
+    const CODE_BADGE_SIZES = [76, 68, 60, 52, 44];
     const WRAP_SIZES = [34, 30, 26];
+    const NAME_MIN = 16;
+    const SHRINK_SIZES = Array.from({ length: 25 - NAME_MIN + 1 }, (_, i) => 25 - i);
     const LINE_GAP = 12;
     const BADGE_GAP = 10;
     const BADGE_PAD_X = 7;
     const BADGE_PAD_Y = 6;
-    const ONE_LINE_MAX = 520;
     const NAME_FONT = (size) => `700 ${size}px Cinzel, serif`;
-    const WARNING_ORDER = ['no-glyph', 'empty', 'over-max', 'overflow-fixed'];
+    const WARNING_ORDER = ['no-glyph', 'empty', 'over-max'];
 
     const clamp = (n, lo, hi) => Math.min(hi, Math.max(lo, n));
     const mmToDots = (mm) => Math.round(mm / 25.4 * DPI);
@@ -160,13 +165,17 @@
             .replace(/æ/g, 'ae').replace(/œ/g, 'oe').replace(/ß/g, 'ss');
     }
 
-    // Text that fits in avail: one 44 px line, else the best two-line split at 34, 30 or 26 px.
-    function fitBig(text, avail, measure) {
-        const one = measure(NAME_FONT(BIG_SIZE), text).right;
-        if (one <= Math.min(avail, ONE_LINE_MAX)) return { size: BIG_SIZE, lines: [text], widest: one };
+    // Text that fits in avail: one line at the largest of the given sizes, else the best two-line split at
+    // 34, 30 or 26 px. With shrink (a max length is set) the two-line size keeps falling down to NAME_MIN.
+    function fitBig(text, avail, measure, sizes = BIG_SIZES, shrink = false) {
+        let one = 0;
+        for (const size of sizes) {
+            one = measure(NAME_FONT(size), text).right;
+            if (one <= avail) return { size, lines: [text], widest: one };
+        }
         const words = text.split(' ');
         let best = null;
-        for (const size of WRAP_SIZES) {
+        for (const size of shrink ? [...WRAP_SIZES, ...SHRINK_SIZES] : WRAP_SIZES) {
             const font = NAME_FONT(size);
             best = { size, lines: [text], widest: measure(font, text).right };
             for (let i = 1; i < words.length; i++) {
@@ -227,17 +236,17 @@
             return { width: MIN_DOTS, height: TAPE_DOTS, ops: [], empty: true, warnings: WARNING_ORDER.filter((w) => warn.has(w)) };
         }
 
-        const fixedMm = input.fixedMm;
-        const fixedDots = typeof fixedMm === 'number' && Number.isFinite(fixedMm) && fixedMm > 0
-            ? clamp(mmToDots(fixedMm), MIN_DOTS, MAX_DOTS) : null;
-        const maxMm = typeof input.maxMm === 'number' && Number.isFinite(input.maxMm) && input.maxMm > 0 ? input.maxMm : DEFAULT_MAX_MM;
-        const limitDots = fixedDots ?? clamp(mmToDots(maxMm), MIN_DOTS, MAX_DOTS);
+        const maxSet = typeof input.maxMm === 'number' && Number.isFinite(input.maxMm) && input.maxMm > 0;
+        const maxMm = maxSet ? input.maxMm : DEFAULT_MAX_MM;
+        const limitDots = clamp(mmToDots(maxMm), MIN_DOTS, MAX_DOTS);
         const avail = Math.max(limitDots - PAD_X - textX, 40);
 
         // line boxes top to bottom: { height, draw(top) }
         const lines = [];
+        let smallSize = SMALL_SIZE;
         if (bigText) {
-            const fit = fitBig(bigText, avail, measure);
+            const fit = fitBig(bigText, avail, measure, !hasSmall ? ALONE_SIZES : promoted ? CODE_BADGE_SIZES : BIG_SIZES, maxSet);
+            if (fit.lines.length > 1) smallSize = SMALL_WRAPPED_SIZE;
             const font = NAME_FONT(fit.size);
             const cap = Math.round(measure(font, 'H').ascent);
             for (const text of fit.lines) {
@@ -251,7 +260,7 @@
             }
         }
         if (hasSmall) {
-            const font = NAME_FONT(SMALL_SIZE);
+            const font = NAME_FONT(smallSize);
             const cap = Math.round(measure(font, 'H').ascent);
             const hasBadge = foil || cond !== 'none';
             lines.push({
@@ -284,14 +293,8 @@
         }
 
         const contentWidth = Math.ceil(contentRight + PAD_X);
-        let width;
-        if (fixedDots !== null) {
-            width = fixedDots;
-            if (contentWidth > width) warn.add('overflow-fixed');
-        } else {
-            width = clamp(contentWidth, MIN_DOTS, MAX_DOTS);
-            if (contentWidth > limitDots) warn.add('over-max');
-        }
+        const width = clamp(contentWidth, MIN_DOTS, MAX_DOTS);
+        if (contentWidth > limitDots) warn.add('over-max');
         return { width, height: TAPE_DOTS, ops, empty: false, warnings: WARNING_ORDER.filter((w) => warn.has(w)) };
     }
 
@@ -470,12 +473,12 @@
     function normalizeSettings(raw) {
         const o = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
         const bool = (v, d) => (typeof v === 'boolean' ? v : d);
-        const mm = typeof o.fixedMm === 'number' && Number.isFinite(o.fixedMm) && o.fixedMm > 0 ? clamp(o.fixedMm, 24.5, 1000) : null;
+        const length = (v) => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? clamp(v, 24.5, 1000) : null);
         return {
             icon: bool(o.icon, true),
             name: bool(o.name, true),
             code: bool(o.code, true),
-            fixedMm: mm,
+            maxMm: length(o.maxMm),
             foil: bool(o.foil, false),
             cond: normalizeCondition(o.cond)
         };

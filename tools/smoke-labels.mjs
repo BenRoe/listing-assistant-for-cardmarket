@@ -176,14 +176,14 @@ const scenarios = [
         const inkRange = (png, x0, x1, y0, y1) => { let n = 0; for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) n += png.ink(x, y); return n; };
         const png = async (page) => readPng((await saveDownload(page, () => page.click('button[data-action="download"]'))).bytes);
 
-        // (a) caption and 3x pixelated preview
+        // (a) caption and 1x pixelated preview
         let page = await openLabels(env, base, '#sets=ons');
         expect(/^\d+ x 18 mm printable \(24 mm tape\)$/.test(await page.textContent('.caption')), `caption ${await page.textContent('.caption')}`);
         const view = await page.evaluate(() => {
             const c = document.querySelector('canvas.preview'), css = getComputedStyle(c);
             return { w: c.width, cssW: css.width, cssH: css.height, ir: css.imageRendering };
         });
-        expect(view.cssW === `${view.w * 3}px` && view.cssH === '384px' && view.ir === 'pixelated', `preview ${JSON.stringify(view)}`);
+        expect(view.cssW === `${view.w}px` && view.cssH === '128px' && view.ir === 'pixelated', `preview ${JSON.stringify(view)}`);
 
         // (b) preview ink equals PNG ink
         const shown = await page.evaluate(() => {
@@ -218,19 +218,16 @@ const scenarios = [
         await page.waitForSelector(READY);
         expect(await page.locator('ul.notices li').count() === 0, 'notice stays with the icon off');
 
-        // (e) fixed length: cut off, and content left aligned on a longer tape
+        // (e) max length: a long name breaks and shrinks to fit; an impossible length warns
         page = await openLabels(env, base, '#sets=clb');
-        await page.fill('#fixedMm', '30');
+        await page.fill('#maxMm', '70');
         await page.waitForSelector(READY);
         let p = await png(page);
-        expect(p.width === 213, `fixed 30 mm width ${p.width}`);
-        expect((await page.textContent('ul.notices')).includes('cut off'), 'overflow notice');
-        page = await openLabels(env, base, '#sets=ons');
-        await page.fill('#fixedMm', '100');
+        expect(p.width <= 496, `max 70 mm width ${p.width}`);
+        expect(await page.locator('ul.notices li').count() === 0, 'no notice when the name fits 70 mm');
+        await page.fill('#maxMm', '26');
         await page.waitForSelector(READY);
-        p = await png(page);
-        expect(p.width === 709, `fixed 100 mm width ${p.width}`);
-        expect(inkRange(p, 560, 709, 0, 128) === 0 && inkRange(p, 0, 560, 0, 128) > 0, 'content is left aligned');
+        expect((await page.textContent('ul.notices')).includes('longer than 26 mm'), 'over-max notice names the set length');
 
         // (f) the longest name is not clipped at automatic length
         page = await openLabels(env, base, '#sets=tmt');
@@ -273,14 +270,14 @@ const scenarios = [
         // (i) options survive a reload, no set is ticked, last foil and condition become the defaults
         page = await openLabels(env, base, '#sets=ons');
         await page.uncheck('#optName');
-        await page.fill('#fixedMm', '50');
+        await page.fill('#maxMm', '50');
         await page.check('.card input.foil');
         await page.selectOption('.card select.cond', 'NM');
         await page.waitForSelector(READY);
         const again = await openLabels(env, base, '', false);
         await again.waitForSelector('#allSets .set-row');
         expect(!(await again.isChecked('#optName')) && await again.isChecked('#optIcon') && await again.isChecked('#optCode'), 'switches restored');
-        expect(await again.inputValue('#fixedMm') === '50', 'fixed length restored');
+        expect(await again.inputValue('#maxMm') === '50', 'max length restored');
         expect(await again.locator('.card').count() === 0, 'no card after reload');
         await again.check('#allSets input[data-code="dom"]');
         await again.waitForSelector(READY);

@@ -16,6 +16,8 @@
         @media (max-width: 800px) { .layout { grid-template-columns: 1fr; } }
         #picker section { margin-top: 16px; }
         #picker input[type=search] { width: 100%; box-sizing: border-box; padding: 6px 8px; }
+        .tips { max-width: 70ch; color: GrayText; }
+        .tips ol { margin: 0; padding-left: 20px; }
         .hint { margin: 4px 0 8px; color: GrayText; font-size: 12px; }
         #status { min-height: 1.2em; margin: 8px 0 0; font-size: 12px; }
         .set-list { list-style: none; margin: 0; padding: 0; max-height: 50vh; overflow-y: auto; border: 1px solid GrayText; border-radius: 6px; }
@@ -42,7 +44,7 @@
 </head>
 <body>
     <h1>Edition labels</h1>
-    <p class="help">Tick sets, choose what each label shows and download the PNG. The PNG is 180 dpi: open it in P-touch Editor at its original size and set the margins to none or narrow, because the printer adds its own feed margins.</p>
+    <p class="help">Tick sets, choose what each label shows and download the PNG.</p>
     <div class="layout">
         <aside id="picker">
             <input id="search" type="search" placeholder="Search sets by name or code" aria-label="Search sets by name or code" autocomplete="off">
@@ -60,14 +62,23 @@
         </aside>
         <main>
             <div class="toolbar">
-                <label><input id="optIcon" type="checkbox"> Icon</label>
-                <label><input id="optName" type="checkbox"> Name</label>
-                <label><input id="optCode" type="checkbox"> Code</label>
-                <label>Fixed length (mm), empty = automatic <input id="fixedMm" type="number" min="25" max="1000" step="1"></label>
+                <label><input id="optIcon" type="checkbox"> Show icon</label>
+                <label><input id="optName" type="checkbox"> Show name</label>
+                <label><input id="optCode" type="checkbox"> Show code</label>
+                <label title="Long names break into two lines and shrink to stay within this length">Max label length (mm) <input id="maxMm" type="number" min="25" max="1000" step="1" placeholder="100"></label>
                 <button id="downloadAll" type="button" disabled>Download all (ZIP)</button>
             </div>
             <p id="empty">No sets ticked. Tick a set on the left to make a label.</p>
             <div id="cards"></div>
+            <section class="tips">
+                <h2>Printing tips (Brother P-touch Editor, 24 mm tape)</h2>
+                <ol>
+                    <li>Select your printer and <b>24mm</b> tape in P-touch Editor, then import the PNG with <b>Image</b>.</li>
+                    <li>The editor imports the PNG far too small. Select the image in the Layout panel, keep <b>Fix Aspect Ratio</b> on and type <b>Height = 18 mm</b>. The width follows, so the label gets its real length.</li>
+                    <li>Set <b>Y</b> to 3 mm to centre the artwork on the tape (18 mm print area on 24 mm tape) and leave <b>Set Length</b> off.</li>
+                    <li>The PNG is 128 dots high at 180 dpi, one image dot per printer dot. Use the smallest <b>Margin</b> you accept: the printer still feeds some blank tape at each end.</li>
+                </ol>
+            </section>
         </main>
     </div>
     <script src="core.js"></script>
