@@ -38,6 +38,29 @@ test('[ICON-03/encoding] the font is a real woff2 and the licence is the upstrea
     assert.match(licence, /GPL/);
 });
 
+test('[CONT-01/licence] labels/lib/cinzel ships only the font, OFL and FONTLOG', () => {
+    assert.deepEqual(readdirSync(new URL('../labels/lib/cinzel/', import.meta.url)).sort(), ['FONTLOG.txt', 'OFL.txt', 'cinzel-bold-latin.woff2']);
+    const font = read('labels/lib/cinzel/cinzel-bold-latin.woff2');
+    assert.equal(font.subarray(0, 4).toString('latin1'), 'wOF2');
+    assert.ok(font.length < 30000);
+    assert.match(read('labels/lib/cinzel/OFL.txt').toString('utf8'), /Copyright 2020 The Cinzel Project Authors/);
+    assert.ok(read('labels/lib/cinzel/FONTLOG.txt').toString('utf8').trim().length > 0);
+});
+
+test('[CONT-01/encoding] labels.html declares the Cinzel 700 face from lib/cinzel', () => {
+    const html = read('labels/labels.html').toString('utf8');
+    const face = html.match(/@font-face\s*\{[^}]*font-family:\s*Cinzel[^}]*\}/);
+    assert.ok(face, 'no Cinzel @font-face');
+    assert.match(face[0], /font-weight:\s*700/);
+    assert.match(face[0], /url\(lib\/cinzel\//);
+});
+
+test('labels files never reference a path outside labels/', () => {
+    for (const f of [...labelFiles('.js'), ...labelFiles('.html')]) {
+        assert.ok(!read(`labels/${f}`).toString('utf8').includes('../'), `${f} contains ../`);
+    }
+});
+
 test('manifest: permissions and content scripts are unchanged, nothing exposed to web pages', () => {
     const manifest = JSON.parse(read('manifest.json'));
     assert.deepEqual(manifest.permissions, ['storage']);

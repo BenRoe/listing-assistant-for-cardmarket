@@ -81,6 +81,19 @@ const scenarios = [
         }
         expect(total > 0 && left > 0, `ink total ${total}, left ${left}`);
     }],
+    ['fonts', async (page, base, expect) => {
+        const missing = [];
+        page.on('response', (r) => { if (r.status() === 404) missing.push(r.url()); });
+        await page.goto(`${base}/labels.html#sets=ons`);
+        await page.waitForSelector('#cards .card[data-ready="1"]');
+        const fonts = await page.evaluate(() => ({
+            check: document.fonts.check('700 44px Cinzel', 'Aa'),
+            loaded: [...document.fonts].some((f) => f.family.includes('Cinzel') && f.status === 'loaded')
+        }));
+        expect(fonts.check, 'Cinzel check');
+        expect(fonts.loaded, 'Cinzel face status loaded');
+        expect(missing.length === 0, `404: ${missing}`);
+    }],
     ['empty', async (page, base, expect) => {
         await page.goto(`${base}/labels.html`);
         await page.waitForSelector('#empty:not([hidden])');
