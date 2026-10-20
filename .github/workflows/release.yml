@@ -21,7 +21,7 @@ jobs:
           [ "$v" = "${GITHUB_REF_NAME}" ] || { echo "manifest.json is $v, tag is ${GITHUB_REF_NAME}"; exit 1; }
 
       - name: Unit tests
-        run: node --test test/shared.test.mjs
+        run: node --test test/shared.test.mjs test/labels.test.mjs test/labels-static.test.mjs
 
       - name: Release notes from the commits since the previous tag
         uses: orhun/git-cliff-action@v4
@@ -32,7 +32,7 @@ jobs:
           OUTPUT: RELEASE_NOTES.md
 
       - name: Package the extension
-        run: zip -r "listing-assistant-for-cardmarket-${GITHUB_REF_NAME}.zip" manifest.json icons css js lib options
+        run: zip -r "listing-assistant-for-cardmarket-${GITHUB_REF_NAME}.zip" manifest.json icons css js lib options labels
 
       - name: Publish the release
         env:
