@@ -49,7 +49,7 @@ The panel has an **Edition labels** button. It opens a page where you pick sets 
 
 ### Printing
 
-Open the PNG in Brother P-touch Editor at its original size (180 dpi) with 24 mm tape selected and the margins set to none or narrow, because the printer adds a feed margin at each end.
+Verified on a Brother PT-P710BT with 24 mm tape in P-touch Editor (Mac). The editor ignores the PNG's 180 dpi tag and imports it far too small. Select the image, keep **Fix Aspect Ratio** on and type **Height = 18 mm** in the Layout panel; the width follows (about 100 mm for a long label). Set **Y** to 3 mm, leave **Set Length** off and use the smallest **Margin** you accept (the same tips are shown under the label cards). "Max label length (mm)" on the page limits the width; long names then break into lines and shrink to fit.
 
 ## Comparison with other tools
 

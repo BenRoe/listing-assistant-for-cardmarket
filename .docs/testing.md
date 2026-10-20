@@ -33,4 +33,30 @@ Setup in [playwright-setup.md](playwright-setup.md). Results after the Search-fl
 - Firefox (temporary add-on via `about:debugging`).
 - Rows without `cardmarket_id`, signed/altered flags, etched foil, products that offer only some languages, zero matching offers.
 - Failed submissions.
-- Edition labels: Firefox canvas and download, P-touch Editor on macOS, a real print on the PT-P710BT.
+- Edition labels: Firefox 140+ (canvas, download), and the unrecorded EXP-04 measurements listed below.
+
+## Edition labels hardware check (EXP-04)
+
+Date 2026-10-20. Setup: Brave on a Mac, extension loaded unpacked; P-touch Editor (Mac), PT-P710BT (USB), 24 mm tape. EXP-04 was approved by the owner on this scope; it was not fully measured. Values not reported are marked "not recorded".
+
+| Check | Result |
+| --- | --- |
+| Extension in Brave | works: loads, panel button opens the label page, downloads work |
+| Editor import size | wrong by default: the editor ignores the 180 dpi tag and imports the PNG far too small (Width 18 mm x Height 3 mm, long side squeezed to the 18 mm print height). "Scale to Print Area" is not usable (needs Set Length enabled and an estimate) |
+| Workaround that works | select the image, Fix Aspect Ratio on, type Height = 18 mm in the Layout panel; Width follows (about 100 mm for the test label); size then looks correct |
+| Editor settings in the owner's screenshot | Margin 3 mm, Landscape, 24 mm tape, PT-P710BT(USB), X 3 mm, Y 3 mm, Set Length off |
+| Print quality | looks sharp (an earlier blur was only in the editor preview) |
+| Printed length vs page caption (mm) | not recorded |
+| Printed artwork height (mm) | not recorded |
+| Clipping at ends or edges | not recorded |
+| Legibility of the small line and icon | not recorded beyond "print looks sharp" |
+| Polarity (dark ink on light tape) | not recorded |
+| Editor cut settings and feed margin seen | not recorded |
+| Brave download prompt behaviour | not recorded |
+| Firefox 140+ (preview renders, PNG download) | not tested |
+| Licence decision | yes: ship the Keyrune woff2 inside the MIT extension with the licence text and README attribution |
+
+Open problems:
+
+- P-touch Editor ignores the PNG's 180 dpi tag and imports it too small. Workaround is documented in the README and on the label page (Height = 18 mm, Fix Aspect Ratio on). Not fixable in the PNG.
+- Firefox 140+ is untested.

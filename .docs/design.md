@@ -45,7 +45,8 @@ The options page opens in its own tab (`open_in_tab: true`), not as a dialog on 
 - The only extension-API call is one guarded read of the loaded CSV in `csv-sets.js` (`storage.local.get`); without it (hosted copy, ordinary page) the page falls back to the Scryfall set list and the `#sets=` fragment.
 - Page storage (`localStorage`): `cmlp.labels.settings` (options) and `cmlp.labels.sets` (public set list with timestamp, 24 h).
 - The only request is `GET https://api.scryfall.com/sets`. No new permissions (the host permission for `api.scryfall.com` exists already).
-- Export is 1-bit PNG, 128 px high (24 mm tape), 180 dpi.
+- Export is 1-bit PNG, 128 px high (24 mm tape), 180 dpi. The width follows the content; the "Max label length (mm)" setting (default 100 mm) makes long names break into lines and shrink to fit. The preview is shown at 1x.
+- P-touch Editor ignores the PNG's dpi tag and imports it too small; the page shows printing tips (set Height = 18 mm with Fix Aspect Ratio on).
 
 ## Permissions
 
