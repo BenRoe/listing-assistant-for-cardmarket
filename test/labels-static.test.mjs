@@ -103,3 +103,60 @@ test('panel: content script has one Edition labels button that sends openLabels'
     assert.equal(source.match(/'openLabels'/g).length, 1);
     assert.equal(source.match(/'Edition labels'/g).length, 1);
 });
+
+const { readCsvSets } = require('../labels/csv-sets.js');
+const LabelCore = require('../labels/core.js');
+
+async function withApi(api, fn) {
+    delete globalThis.chrome;
+    delete globalThis.browser;
+    if (api.chrome !== undefined) globalThis.chrome = api.chrome;
+    if (api.browser !== undefined) globalThis.browser = api.browser;
+    try {
+        return await fn();
+    } finally {
+        delete globalThis.chrome;
+        delete globalThis.browser;
+    }
+}
+const storage = (data) => ({ storage: { local: { get: async () => data } } });
+const fileOf = (binder, codes) => ({ binder, rows: codes.map(([setCode, setName, b]) => ({ setCode, setName, binder: b, qty: 99 })) });
+
+test('[PAGE-05/empty] readCsvSets returns null when there is no extension API at all', async () => {
+    assert.equal(await withApi({}, () => readCsvSets(LabelCore.groupCsvSets)), null);
+});
+
+test('[PAGE-05/empty] readCsvSets returns null for a bare chrome object without storage', async () => {
+    assert.equal(await withApi({ chrome: {} }, () => readCsvSets(LabelCore.groupCsvSets)), null);
+    assert.equal(await withApi({ chrome: { storage: {} } }, () => readCsvSets(LabelCore.groupCsvSets)), null);
+});
+
+test('[PAGE-05/empty] readCsvSets returns null when the storage read rejects', async () => {
+    const chrome = { storage: { local: { get: async () => { throw new Error('denied'); } } } };
+    assert.equal(await withApi({ chrome }, () => readCsvSets(LabelCore.groupCsvSets)), null);
+});
+
+test('[PAGE-05/empty] readCsvSets returns [] when storage holds no CSV', async () => {
+    assert.deepEqual(await withApi({ chrome: storage({}) }, () => readCsvSets(LabelCore.groupCsvSets)), []);
+    assert.deepEqual(await withApi({ chrome: storage({ csvs: {}, activeFile: 'a' }) }, () => readCsvSets(LabelCore.groupCsvSets)), []);
+});
+
+test('[PAGE-05/adjacency] readCsvSets prefers the active file and falls back to the first one', async () => {
+    const csvs = { a: fileOf('', [['ONS', 'Onslaught', 'x']]), b: fileOf('', [['DOM', 'Dominaria', 'x']]) };
+    const codes = async (data) => (await withApi({ chrome: storage(data) }, () => readCsvSets(LabelCore.groupCsvSets))).map((s) => s.code);
+    assert.deepEqual(await codes({ csvs, activeFile: 'b' }), ['dom']);
+    assert.deepEqual(await codes({ csvs, activeFile: 'missing' }), ['ons']);
+});
+
+test('[PAGE-05/adjacency] readCsvSets applies the binder rule and merges codes case-insensitively', async () => {
+    const csvs = { a: fileOf('Binder A', [['ONS', 'Onslaught', 'Binder A'], ['dom', 'Dominaria', 'Binder A'], ['MOM', 'March', 'Binder B'], ['Ons', 'Other', 'Binder A']]) };
+    const sets = await withApi({ chrome: storage({ csvs, activeFile: 'a' }) }, () => readCsvSets(LabelCore.groupCsvSets));
+    assert.deepEqual(sets, [{ code: 'ons', name: 'Onslaught' }, { code: 'dom', name: 'Dominaria' }]);
+});
+
+test('[PAGE-05/adjacency] readCsvSets uses the browser namespace first when both exist', async () => {
+    const browser = storage({ csvs: { a: fileOf('', [['ONS', 'Onslaught', '']]), }, activeFile: 'a' });
+    const chrome = storage({ csvs: { a: fileOf('', [['DOM', 'Dominaria', '']]) }, activeFile: 'a' });
+    const sets = await withApi({ browser, chrome }, () => readCsvSets(LabelCore.groupCsvSets));
+    assert.deepEqual(sets.map((s) => s.code), ['ons']);
+});

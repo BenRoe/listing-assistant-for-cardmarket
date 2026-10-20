@@ -58,6 +58,23 @@ function readPng(bytes) {
     return { ...ihdr, phys, order, ink };
 }
 
+// Fixture for GET https://api.scryfall.com/sets (the only external request the page may make)
+const SET_FIXTURE = { object: 'list', has_more: false, data: [
+    { code: 'ons', name: 'Onslaught', set_type: 'expansion', released_at: '2002-10-07', digital: false },
+    { code: 'aer', name: '\u00C6ther Revolt', set_type: 'expansion', released_at: '2017-01-20', digital: false },
+    { code: 'dom', name: 'Dominaria', set_type: 'expansion', released_at: '2018-04-27', digital: false },
+    { code: 'clb', name: 'Commander Legends: Battle for Baldur\u2019s Gate', set_type: 'draft_innovation', released_at: '2022-06-10', digital: false },
+    { code: 'tmt', name: 'Teenage Mutant Ninja Turtles Source Material', set_type: 'expansion', released_at: '2025-11-07', digital: false },
+    { code: 'trk', name: 'Test Realm Kingdom', set_type: 'expansion', released_at: '2030-01-01', digital: false },
+    { code: 'nul', name: 'Undated Set', set_type: 'expansion', released_at: null, digital: false },
+    { code: 'tdom', name: 'Dominaria Tokens', set_type: 'token', released_at: '2018-04-27', digital: false },
+    { code: 'pmg', name: 'Magazine Inserts', set_type: 'promo', released_at: '2018-01-01', digital: false },
+    { code: 'mgm', name: 'Mini Game Set', set_type: 'minigame', released_at: '2005-01-01', digital: false },
+    { code: 'dig', name: 'Digital Only', set_type: 'expansion', released_at: '2019-01-01', digital: true }
+] };
+
+const rowCodes = (page, list) => page.evaluate((id) => [...document.querySelectorAll(`#${id} .set-row`)].map((r) => r.dataset.code), list);
+
 const scenarios = [
     ['tracer', async (page, base, expect) => {
         await page.goto(`${base}/labels.html#sets=ons`);
@@ -98,7 +115,47 @@ const scenarios = [
         await page.goto(`${base}/labels.html`);
         await page.waitForSelector('#empty:not([hidden])');
         expect(await page.locator('#cards .card').count() === 0, 'no cards');
-    }]
+    }],
+    ['picker', async (page, base, expect, env) => {
+        await page.goto(`${base}/labels.html`);
+        await page.waitForSelector('#allSets .set-row');
+        expect(await page.locator('.card').count() === 0, 'no card on open');
+        expect(await page.locator('#empty').isVisible(), 'empty text visible');
+        expect((await rowCodes(page, 'allSets')).join() === 'ons,aer,dom,clb,tmt,trk,nul', `default rows ${await rowCodes(page, 'allSets')}`);
+        expect(env.sets.requests === 1, `one sets request, got ${env.sets.requests}`);
+
+        await page.check('#showAll');
+        const all = await rowCodes(page, 'allSets');
+        expect(['tdom', 'pmg', 'mgm'].every((c) => all.includes(c)) && !all.includes('dig'), `show all rows ${all}`);
+        expect(all.indexOf('ons') < all.indexOf('mgm') && all.indexOf('mgm') < all.indexOf('pmg') && all.indexOf('pmg') < all.indexOf('dom'), `oldest first ${all}`);
+        await page.uncheck('#showAll');
+
+        await page.fill('#search', 'aether');
+        expect((await rowCodes(page, 'allSets')).join() === 'aer', 'search aether');
+        await page.fill('#search', 'ons');
+        expect((await rowCodes(page, 'allSets'))[0] === 'ons', 'search ons first');
+        await page.fill('#search', 'zzzzzz');
+        expect((await page.textContent('#allSets')).includes('No sets match'), 'no match text');
+
+        const second = await env.context.newPage();
+        await second.goto(`${base}/labels.html#sets=ons,dom`);
+        await second.waitForSelector('#cards .card[data-ready="1"]');
+        await second.waitForFunction(() => document.querySelectorAll('#cards .card[data-ready="1"]').length === 2);
+        expect(env.sets.requests === 1, `second visit made a sets request (${env.sets.requests})`);
+        expect((await second.$$eval('#cards .card', (c) => c.map((x) => x.dataset.code))).join() === 'ons,dom', 'cards in date order');
+        const ticked = await second.$$eval('#allSets input:checked', (b) => b.map((x) => x.dataset.code));
+        expect(ticked.join() === 'ons,dom', `ticked ${ticked}`);
+        await second.click('#allSets input[data-code="dom"]');
+        expect(await second.locator('#cards .card').count() === 1, 'untick removes the card');
+    }],
+    ['offline', async (page, base, expect, env) => {
+        env.sets.mode = 'abort';
+        await page.goto(`${base}/labels.html#sets=ons`);
+        await page.waitForSelector('#cards .card[data-ready="1"]');
+        await page.waitForFunction(() => document.getElementById('status').textContent.includes('Set list unavailable'));
+        expect((await page.textContent('#cards .card-title')).includes('ONS'), 'card titled with the code');
+        expect((await page.textContent('#allSets')).includes('Set list unavailable'), 'list shows the notice');
+    }, { allowErrors: /Failed to load resource|ERR_/ }]
 ];
 
 const server = await serve();
@@ -106,16 +163,35 @@ const base = `http://127.0.0.1:${server.address().port}`;
 let browser, code = 0;
 try {
     browser = await chromium.launch();
-    for (const [name, run] of scenarios) {
-        const page = await (await browser.newContext({ acceptDownloads: true })).newPage();
-        const problems = [], hosts = new Set();
-        page.on('console', (m) => { if (m.type() === 'error') problems.push(`console: ${m.text()}`); });
-        page.on('pageerror', (e) => problems.push(`pageerror: ${e.message}`));
-        page.on('request', (r) => hosts.add(new URL(r.url()).host));
+    for (const [name, run, opts = {}] of scenarios) {
+        const context = await browser.newContext({ acceptDownloads: true });
+        const env = { context, sets: { mode: 'ok', requests: 0 } };
+        const problems = [];
+        let loads = 0;
+        await context.route('https://api.scryfall.com/sets', (route) => {
+            if (env.sets.mode === 'abort') return route.abort();
+            return route.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(SET_FIXTURE) });
+        });
+        // Every request must be local or exactly one GET https://api.scryfall.com/sets without query string or body
+        context.on('request', (r) => {
+            const u = new URL(r.url());
+            if (!/^https?:$/.test(u.protocol) || u.origin === base) return;
+            const ok = u.origin === 'https://api.scryfall.com' && u.pathname === '/sets' && u.search === '' && r.method() === 'GET' && !r.postData();
+            if (ok) env.sets.requests++;
+            else problems.push(`unexpected request ${r.method()} ${r.url()}`);
+        });
+        context.on('page', (p) => {
+            p.on('load', () => { loads++; });
+            p.on('console', (m) => { if (m.type() === 'error' && !opts.allowErrors?.test(m.text())) problems.push(`console: ${m.text()}`); });
+            p.on('pageerror', (e) => problems.push(`pageerror: ${e.message}`));
+        });
         const expect = (ok, what) => { if (!ok) throw new Error(`${name}: ${what}`); };
-        await run(page, base, expect);
+        await run(await context.newPage(), base, expect, env);
+        const unexpected = problems.find((p) => p.startsWith('unexpected request'));
+        if (unexpected) throw new Error(unexpected);
         expect(problems.length === 0, problems.join('; '));
-        expect([...hosts].every((h) => h === base.slice(7)), `external requests: ${[...hosts]}`);
+        expect(env.sets.requests <= loads, `${env.sets.requests} sets requests for ${loads} page loads`);
+        await context.close();
     }
     console.log('SMOKE OK');
 } catch (e) {

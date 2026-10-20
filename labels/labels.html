@@ -2,26 +2,68 @@
 <html lang="en">
 <head>
     <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Edition labels</title>
     <style>
         :root { color-scheme: light dark; }
         @font-face { font-family: Keyrune; src: url(lib/keyrune/keyrune.woff2) format('woff2'); }
         @font-face { font-family: Cinzel; font-weight: 700; src: url(lib/cinzel/cinzel-bold-latin.woff2) format('woff2'); }
-        body { font: 14px system-ui, sans-serif; max-width: 960px; margin: 24px auto; padding: 0 16px; }
-        h1 { font-size: 20px; }
-        .card { border: 1px solid GrayText; border-radius: 6px; padding: 12px; margin: 12px 0; }
-        .card h2 { font-size: 15px; margin: 0 0 8px; }
-        .card canvas { display: block; max-width: 100%; margin-bottom: 8px; background: #fff; }
-        #error { color: crimson; }
+        body { font: 14px system-ui, sans-serif; margin: 0; padding: 16px; }
+        h1 { font-size: 20px; margin: 0 0 4px; }
+        h2 { font-size: 15px; margin: 0 0 8px; }
+        .help { margin: 0 0 16px; max-width: 70ch; color: GrayText; }
+        .layout { display: grid; grid-template-columns: 22rem minmax(0, 1fr); gap: 24px; align-items: start; }
+        @media (max-width: 800px) { .layout { grid-template-columns: 1fr; } }
+        #picker section { margin-top: 16px; }
+        #picker input[type=search] { width: 100%; box-sizing: border-box; padding: 6px 8px; }
+        .hint { margin: 4px 0 8px; color: GrayText; font-size: 12px; }
+        #status { min-height: 1.2em; margin: 8px 0 0; font-size: 12px; }
+        .set-list { list-style: none; margin: 0; padding: 0; max-height: 50vh; overflow-y: auto; border: 1px solid GrayText; border-radius: 6px; }
+        .set-list li { margin: 0; }
+        .set-row { display: flex; gap: 8px; align-items: baseline; padding: 4px 8px; cursor: pointer; }
+        .set-row:hover { background: color-mix(in srgb, CanvasText 8%, transparent); }
+        .set-row .code { font-family: ui-monospace, monospace; min-width: 4ch; }
+        .set-row .name { flex: 1; }
+        .set-row .date { color: GrayText; font-size: 12px; }
+        .set-note { padding: 8px; color: GrayText; }
+        .toolbar { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; margin-bottom: 16px; }
+        .toolbar input[type=number] { width: 6ch; }
+        #empty { color: GrayText; }
     </style>
 </head>
 <body>
     <h1>Edition labels</h1>
-    <p id="empty" hidden>No sets selected. Add codes to the address, for example #sets=ons</p>
-    <p id="error" hidden></p>
-    <div id="cards"></div>
+    <p class="help">Tick sets, choose what each label shows and download the PNG. The PNG is 180 dpi: open it in P-touch Editor at its original size and set the margins to none or narrow, because the printer adds its own feed margins.</p>
+    <div class="layout">
+        <aside id="picker">
+            <input id="search" type="search" placeholder="Search sets by name or code" aria-label="Search sets by name or code" autocomplete="off">
+            <p class="hint">Search sets by name or code</p>
+            <label><input id="showAll" type="checkbox"> Show all (tokens, promos, memorabilia, minigames)</label>
+            <p id="status" role="status"></p>
+            <section id="csvSection" hidden>
+                <h2>Sets in your CSV</h2>
+                <ul id="csvSets" class="set-list"></ul>
+            </section>
+            <section>
+                <h2>All sets</h2>
+                <ul id="allSets" class="set-list"></ul>
+            </section>
+        </aside>
+        <main>
+            <div class="toolbar">
+                <label><input id="optIcon" type="checkbox"> Icon</label>
+                <label><input id="optName" type="checkbox"> Name</label>
+                <label><input id="optCode" type="checkbox"> Code</label>
+                <label>Fixed length (mm), empty = automatic <input id="fixedMm" type="number" min="25" max="1000" step="1"></label>
+                <button id="downloadAll" type="button" disabled>Download all (ZIP)</button>
+            </div>
+            <p id="empty">No sets ticked. Tick a set on the left to make a label.</p>
+            <div id="cards"></div>
+        </main>
+    </div>
     <script src="core.js"></script>
     <script src="keyrune-map.js"></script>
+    <script src="csv-sets.js"></script>
     <script src="labels.js"></script>
 </body>
 </html>
