@@ -12,7 +12,8 @@ const core = require('../labels/core.js');
 const KEYRUNE = require('../labels/keyrune-map.js');
 const {
     crc32, adler32, toBitmap, encodePng1bit, glyphFor, parseFragment, layoutLabel, MIN_DOTS, PAD_X, PAD_Y, ICON_GAP,
-    normalizeCondition, fold, mmToDots, fileName, uniqueNames, captionFor, bitmapToRgba
+    normalizeCondition, fold, mmToDots, fileName, uniqueNames, captionFor, bitmapToRgba,
+    zipStore, filterSets, sortSets, searchSets, groupCsvSets, resolveSet, trimSets, normalizeSettings, HIDDEN_SET_TYPES
 } = core;
 
 // Walks the chunks (asserting every CRC), inflates IDAT and returns ink bits (1 = ink) next to the raw samples
@@ -435,4 +436,229 @@ test('[CONT-05/encoding] bitmapToRgba round-trips through toBitmap', () => {
     }
     const one = bitmapToRgba(toBitmap(rgbaFrom(2, 1, (x) => x === 0), 2, 1));
     assert.deepEqual([...one], [0, 0, 0, 255, 255, 255, 255, 255]);
+});
+
+// ---- ZIP, set filtering, sorting, search, CSV grouping, validation (plan 01-03 task 2) ----
+
+// minimal ZIP reader: end of central directory -> central directory -> local headers
+function readZip(bytes) {
+    const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.length);
+    const eocd = bytes.length - 22;
+    assert.equal(dv.getUint32(eocd, true), 0x06054b50);
+    const count = dv.getUint16(eocd + 10, true);
+    const entries = [];
+    let o = dv.getUint32(eocd + 16, true);
+    for (let i = 0; i < count; i++) {
+        assert.equal(dv.getUint32(o, true), 0x02014b50);
+        const nameLen = dv.getUint16(o + 28, true);
+        const entry = {
+            flag: dv.getUint16(o + 8, true), method: dv.getUint16(o + 10, true), crc: dv.getUint32(o + 16, true),
+            size: dv.getUint32(o + 24, true), offset: dv.getUint32(o + 42, true),
+            name: new TextDecoder().decode(bytes.subarray(o + 46, o + 46 + nameLen))
+        };
+        assert.equal(dv.getUint32(entry.offset, true), 0x04034b50, 'local header signature');
+        const localName = dv.getUint16(entry.offset + 26, true), localExtra = dv.getUint16(entry.offset + 28, true);
+        entry.localName = new TextDecoder().decode(bytes.subarray(entry.offset + 30, entry.offset + 30 + localName));
+        entry.data = bytes.subarray(entry.offset + 30 + localName + localExtra, entry.offset + 30 + localName + localExtra + entry.size);
+        entries.push(entry);
+        o += 46 + nameLen + dv.getUint16(o + 30, true) + dv.getUint16(o + 32, true);
+    }
+    return entries;
+}
+
+const SETS = [
+    { code: 'ons', name: 'Onslaught', released_at: '2002-10-07', set_type: 'expansion', digital: false },
+    { code: 'dom', name: 'Dominaria', released_at: '2018-04-27', set_type: 'expansion', digital: false },
+    { code: 'aer', name: 'Æther Revolt', released_at: '2017-01-20', set_type: 'expansion', digital: false },
+    { code: 'tons', name: 'Onslaught Tokens', released_at: '2002-10-07', set_type: 'token', digital: false },
+    { code: 'pmei', name: 'Magic Online Promos', released_at: null, set_type: 'promo', digital: false },
+    { code: 'mmh', name: 'Mini Game', released_at: '2020-01-01', set_type: 'minigame', digital: false },
+    { code: 'vma', name: 'Vintage Masters', released_at: '2014-06-16', set_type: 'masters', digital: true },
+    { code: 'fut', name: 'Future Set', released_at: '2099-01-01', set_type: 'core', digital: false },
+    { code: 'dmu', name: 'Dominaria United', released_at: '2022-09-09', set_type: 'expansion', digital: false },
+    { code: 'cmd', name: 'Commander Legends', released_at: '2020-11-20', set_type: 'commander', digital: false },
+    { code: 'm20', name: 'Core Set 2020', released_at: '2019-07-12', set_type: 'core', digital: false },
+    { code: 'm21', name: 'Core Set 2020', released_at: '2020-07-03', set_type: 'core', digital: false }
+];
+const codes = (list) => list.map((x) => x.code);
+
+test('zipStore: parses back with names, order, stored size, CRC and UTF-8 flag', () => {
+    const a = Uint8Array.from({ length: 3000 }, (_, i) => i * 7 % 256);
+    const b = new TextEncoder().encode('second');
+    const files = [{ name: 'ons-onslaught.png', data: a }, { name: 'ä-ö.png', data: b }, { name: 'empty.png', data: new Uint8Array(0) }];
+    const out = zipStore(files, new Date(2026, 9, 20, 12, 30, 40));
+    const entries = readZip(out);
+    assert.deepEqual(entries.map((e) => e.name), files.map((f) => f.name));
+    assert.deepEqual(entries.map((e) => e.localName), files.map((f) => f.name));
+    entries.forEach((e, i) => {
+        assert.equal(e.flag & 0x0800, 0x0800);
+        assert.equal(e.method, 0);
+        assert.equal(e.size, files[i].data.length);
+        assert.equal(e.crc, crc32(files[i].data));
+        assert.deepEqual(Uint8Array.from(e.data), files[i].data);
+    });
+});
+
+test('[EXP-02/empty] zipStore([]) is the 22-byte end record with zero entries', () => {
+    const out = zipStore([]);
+    assert.equal(out.length, 22);
+    const dv = new DataView(out.buffer, out.byteOffset, out.length);
+    assert.equal(dv.getUint32(0, true), 0x06054b50);
+    assert.equal(dv.getUint16(8, true), 0);
+    assert.equal(dv.getUint16(10, true), 0);
+});
+
+test('[EXP-02/ordering] zipStore keeps input order in local headers and central directory', () => {
+    const names = ['c.png', 'a.png', 'b.png'];
+    const out = zipStore(names.map((name, i) => ({ name, data: Uint8Array.of(i) })));
+    const entries = readZip(out);
+    assert.deepEqual(entries.map((e) => e.name), names);
+    assert.deepEqual(entries.map((e) => e.offset), [...entries.map((e) => e.offset)].sort((x, y) => x - y));
+    assert.deepEqual(entries.map((e) => e.localName), names);
+});
+
+test('zipStore: real PNGs pass unzip -t and Python zipfile when available', (t) => {
+    const png = encodePng1bit(toBitmap(rgbaFrom(200, 128, (x, y) => x === y), 200, 128));
+    const dir = mkdtempSync(join(tmpdir(), 'zip-'));
+    const file = join(dir, 'labels.zip');
+    writeFileSync(file, zipStore([{ name: 'ons-onslaught-foil-nm.png', data: png }, { name: 'ä.png', data: png }]));
+    const unzip = spawnSync('unzip', ['-t', file]);
+    if (unzip.error) return t.skip('unzip not on PATH');
+    assert.equal(unzip.status, 0, String(unzip.stdout));
+});
+
+test('filterSets: digital never shows, hidden types only with showAll', () => {
+    assert.deepEqual(HIDDEN_SET_TYPES, ['token', 'promo', 'memorabilia', 'minigame']);
+    assert.deepEqual(codes(filterSets(SETS, false)), ['ons', 'dom', 'aer', 'fut', 'dmu', 'cmd', 'm20', 'm21']);
+    const all = codes(filterSets(SETS, true));
+    assert.ok(all.includes('mmh') && all.includes('tons') && all.includes('pmei'), 'minigame, token and promo appear with showAll');
+    assert.ok(!all.includes('vma'), 'digital set stays hidden');
+    assert.ok(!codes(filterSets(SETS, undefined)).includes('mmh'));
+    assert.equal(filterSets(SETS, false) !== SETS, true);
+});
+
+test('[PAGE-02/ordering] sortSets: dates ascending, name then code ties, undated last, input untouched', () => {
+    const before = codes(SETS);
+    const sorted = sortSets(SETS);
+    assert.deepEqual(codes(SETS), before);
+    assert.deepEqual(codes(sorted), ['ons', 'tons', 'vma', 'aer', 'dom', 'm20', 'mmh', 'm21', 'cmd', 'dmu', 'fut', 'pmei']);
+    const twin = sortSets([
+        { code: 'zz2', name: 'Same', released_at: '2020-01-01' }, { code: 'zz1', name: 'Same', released_at: '2020-01-01' },
+        { code: 'bb', name: 'Beta', released_at: null }, { code: 'aa', name: 'Alpha', released_at: 'garbage' }, { code: 'cc', name: 'Gamma' }
+    ]);
+    assert.deepEqual(codes(twin), ['zz1', 'zz2', 'aa', 'bb', 'cc']);
+    assert.deepEqual(sortSets([]), []);
+});
+
+test('[PAGE-03/adjacency] searchSets ranks exact code, then code prefix, then name; each set once', () => {
+    const hits = searchSets(SETS, 'ons');
+    assert.deepEqual(codes(hits), ['ons', 'tons']);
+    const ranked = searchSets([
+        { code: 'abc', name: 'Zed ons' }, { code: 'onsx', name: 'Y' }, { code: 'ons', name: 'X' }, { code: 'onsy', name: 'Y2' }
+    ], 'ons');
+    assert.deepEqual(codes(ranked), ['ons', 'onsx', 'onsy', 'abc']);
+    assert.equal(new Set(codes(searchSets(SETS, 'o'))).size, searchSets(SETS, 'o').length);
+});
+
+test('[PAGE-03/empty] searchSets: blank query returns everything in input order, no match returns []', () => {
+    for (const q of ['', '   ', undefined, null, 7, {}]) assert.deepEqual(codes(searchSets(SETS, q)), codes(SETS), String(q));
+    assert.notEqual(searchSets(SETS, ''), SETS);
+    assert.deepEqual(searchSets(SETS, 'zzzz'), []);
+});
+
+test('[PAGE-03/encoding] searchSets is case and diacritics insensitive', () => {
+    assert.deepEqual(codes(searchSets(SETS, 'aether')), ['aer']);
+    assert.deepEqual(codes(searchSets(SETS, 'ÆTHER')), ['aer']);
+    assert.deepEqual(codes(searchSets(SETS, 'COMMANDER legends')), ['cmd']);
+});
+
+test('[PAGE-03/ordering] searchSets keeps input order inside one rank', () => {
+    assert.deepEqual(codes(searchSets(SETS, 'dominaria')), ['dom', 'dmu']);
+    const dated = sortSets(SETS);
+    assert.deepEqual(codes(searchSets(dated, 'core set')), ['m20', 'm21']);
+});
+
+const csvFile = (rows, binder = '') => ({ rows, binder });
+
+test('[PAGE-02/adjacency] groupCsvSets merges one code, keeps the same name under two codes apart', () => {
+    const out = groupCsvSets(csvFile([
+        { setCode: 'ONS', setName: 'Onslaught' }, { setCode: 'ons', setName: 'Other' }, { setCode: 'M20', setName: 'Core Set 2020' }, { setCode: 'M21', setName: 'Core Set 2020' }
+    ]));
+    assert.deepEqual(out, [{ code: 'ons', name: 'Onslaught' }, { code: 'm20', name: 'Core Set 2020' }, { code: 'm21', name: 'Core Set 2020' }]);
+});
+
+test('[PAGE-02/empty] groupCsvSets returns [] for missing input and skips rows without a code', () => {
+    for (const f of [undefined, null, {}, { rows: [] }, { rows: 'x' }, 42]) assert.deepEqual(groupCsvSets(f), [], String(JSON.stringify(f)));
+    assert.deepEqual(groupCsvSets(csvFile([{ setCode: '', setName: 'x' }, { setName: 'y' }, null, 'row'])), []);
+});
+
+test('[PAGE-02/encoding] groupCsvSets lower-cases and validates codes, keeps accents, blanks bad names', () => {
+    const out = groupCsvSets(csvFile([
+        { setCode: 'ONS', setName: 'Onslaught' }, { setCode: 'A', setName: 'short' }, { setCode: 'TOOLONG7', setName: 'long' },
+        { setCode: '../x', setName: 'bad' }, { setCode: 'ÄÖX', setName: 'bad' }, { setCode: 'aer', setName: 'Æther Revolt' },
+        { setCode: 'dom', setName: 42 }, { setCode: ' m20 ', setName: 'Core Set 2020' }, { setCode: 'constructor', setName: 'proto' }
+    ]));
+    assert.deepEqual(out, [
+        { code: 'ons', name: 'Onslaught' }, { code: 'aer', name: 'Æther Revolt' }, { code: 'dom', name: '' },
+        { code: 'm20', name: 'Core Set 2020' }
+    ]);
+});
+
+test('[PAGE-05/ordering] groupCsvSets returns sets in first-seen row order', () => {
+    const out = groupCsvSets(csvFile([{ setCode: 'dom', setName: 'D' }, { setCode: 'ons', setName: 'O' }, { setCode: 'dom', setName: 'D2' }, { setCode: 'afr', setName: 'A' }]));
+    assert.deepEqual(out.map((s) => s.code), ['dom', 'ons', 'afr']);
+});
+
+test('[CONT-04/encoding] groupCsvSets ignores qty, foil and prices', () => {
+    const a = groupCsvSets(csvFile([{ setCode: 'ons', setName: 'Onslaught', qty: 99, foil: 'foil', price: 5 }]));
+    const b = groupCsvSets(csvFile([{ setCode: 'ons', setName: 'Onslaught', qty: 1 }]));
+    assert.deepEqual(a, b);
+    assert.deepEqual(Object.keys(a[0]), ['code', 'name']);
+});
+
+test('groupCsvSets: binder filter follows the panel rule', () => {
+    const rows = [{ setCode: 'ons', setName: 'O', binder: 'Box 1' }, { setCode: 'dom', setName: 'D', binder: 'Box 2' }];
+    assert.deepEqual(groupCsvSets(csvFile(rows, '')).length, 2);
+    assert.deepEqual(groupCsvSets(csvFile(rows, '*')).length, 2);
+    assert.deepEqual(groupCsvSets(csvFile(rows, 'Box 2')).map((s) => s.code), ['dom']);
+    assert.deepEqual(groupCsvSets(csvFile(rows, 'Nope')), []);
+});
+
+test('resolveSet: case-insensitive lookup with a fallback record', () => {
+    assert.equal(resolveSet(SETS, 'ONS', 'x'), SETS[0]);
+    assert.deepEqual(resolveSet(SETS, 'zzz', 'Custom'), { code: 'zzz', name: 'Custom', released_at: null, set_type: '', digital: false });
+    assert.equal(resolveSet(SETS, 'zzz').name, 'ZZZ');
+    assert.equal(resolveSet([], 'constructor').name, 'CONSTRUCTOR');
+});
+
+test('trimSets: keeps five validated fields, drops malformed entries, throws on bad input', () => {
+    const json = {
+        object: 'list',
+        data: [
+            { code: 'ONS', name: 'Onslaught', released_at: '2002-10-07', set_type: 'expansion', digital: false, icon_svg_uri: 'https://x', card_count: 350 },
+            { code: 'bad code', name: 'x' }, { code: 'dom', name: '' }, { code: 'dmu', name: 'D'.repeat(201) }, null, 'str',
+            { code: 'afr', name: 'Adventures', released_at: 'soon', set_type: 'y'.repeat(41), digital: 'true' },
+            { code: 'vma', name: 'Vintage', released_at: '2014-06-16', set_type: 'masters', digital: true }
+        ]
+    };
+    const out = trimSets(json);
+    assert.deepEqual(out, [
+        { code: 'ons', name: 'Onslaught', released_at: '2002-10-07', set_type: 'expansion', digital: false },
+        { code: 'afr', name: 'Adventures', released_at: null, set_type: '', digital: false },
+        { code: 'vma', name: 'Vintage', released_at: '2014-06-16', set_type: 'masters', digital: true }
+    ]);
+    assert.deepEqual(trimSets(json.data), out);
+    for (const bad of [null, undefined, 'x', 42, {}, { object: 'list' }, { data: 'x' }]) assert.throws(() => trimSets(bad), /not a list/, String(bad));
+    for (const none of [[], { data: [] }, [{ code: '!' }]]) assert.throws(() => trimSets(none), /no valid sets/);
+});
+
+test('normalizeSettings: defaults, real booleans only, clamped length, whitelisted condition', () => {
+    const defaults = { icon: true, name: true, code: true, fixedMm: null, foil: false, cond: 'none' };
+    for (const raw of [undefined, null, 'x', 5, [], true]) assert.deepEqual(normalizeSettings(raw), defaults, String(raw));
+    assert.deepEqual(normalizeSettings({ icon: false, name: 'no', code: 0, foil: 1, cond: 'nm', fixedMm: 60, evil: '<script>', __proto__: { x: 1 } }),
+        { icon: false, name: true, code: true, fixedMm: 60, foil: false, cond: 'NM' });
+    assert.equal(normalizeSettings({ fixedMm: 5 }).fixedMm, 24.5);
+    assert.equal(normalizeSettings({ fixedMm: 5000 }).fixedMm, 1000);
+    for (const bad of [0, -4, NaN, Infinity, '60', null, {}]) assert.equal(normalizeSettings({ fixedMm: bad }).fixedMm, null, String(bad));
+    assert.equal(normalizeSettings({ foil: true }).foil, true);
 });

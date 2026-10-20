@@ -341,10 +341,152 @@
         return rgba;
     }
 
+    // Store-only ZIP (method 0, UTF-8 names flagged with bit 11, no ZIP64): files = [{ name, data: Uint8Array }]
+    function zipStore(files, date = new Date()) {
+        const enc = new TextEncoder();
+        const dosTime = (date.getHours() << 11) | (date.getMinutes() << 5) | (date.getSeconds() >> 1);
+        const dosDate = ((date.getFullYear() - 1980) << 9) | ((date.getMonth() + 1) << 5) | date.getDate();
+        const local = [];
+        const central = [];
+        let offset = 0;
+        for (const f of files) {
+            const name = enc.encode(f.name);
+            const crc = crc32(f.data);
+            const h = new DataView(new ArrayBuffer(30));   // local file header
+            h.setUint32(0, 0x04034b50, true);
+            h.setUint16(4, 20, true);
+            h.setUint16(6, 0x0800, true);
+            h.setUint16(10, dosTime, true);
+            h.setUint16(12, dosDate, true);
+            h.setUint32(14, crc, true);
+            h.setUint32(18, f.data.length, true);
+            h.setUint32(22, f.data.length, true);
+            h.setUint16(26, name.length, true);
+            local.push(new Uint8Array(h.buffer), name, f.data);
+            const c = new DataView(new ArrayBuffer(46));   // central directory header
+            c.setUint32(0, 0x02014b50, true);
+            c.setUint16(4, 20, true);
+            c.setUint16(6, 20, true);
+            c.setUint16(8, 0x0800, true);
+            c.setUint16(12, dosTime, true);
+            c.setUint16(14, dosDate, true);
+            c.setUint32(16, crc, true);
+            c.setUint32(20, f.data.length, true);
+            c.setUint32(24, f.data.length, true);
+            c.setUint16(28, name.length, true);
+            c.setUint32(42, offset, true);
+            central.push(new Uint8Array(c.buffer), name);
+            offset += 30 + name.length + f.data.length;
+        }
+        const cd = concat(central);
+        const e = new DataView(new ArrayBuffer(22));   // end of central directory
+        e.setUint32(0, 0x06054b50, true);
+        e.setUint16(8, files.length, true);
+        e.setUint16(10, files.length, true);
+        e.setUint32(12, cd.length, true);
+        e.setUint32(16, offset, true);
+        return concat([...local, cd, new Uint8Array(e.buffer)]);
+    }
+
+    // Set records: { code, name, released_at, set_type, digital }
+    const HIDDEN_SET_TYPES = ['token', 'promo', 'memorabilia', 'minigame'];
+    const SET_CODE = /^[a-z0-9]{2,6}$/;
+    const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+    function filterSets(sets, showAll) {
+        return sets.filter((s) => s.digital !== true && (showAll === true || !HIDDEN_SET_TYPES.includes(s.set_type)));
+    }
+
+    // oldest first; undated sets last; ties by name then code
+    function sortSets(sets) {
+        const dated = (s) => typeof s.released_at === 'string' && ISO_DATE.test(s.released_at);
+        const byName = (a, b) => String(a.name ?? '').localeCompare(String(b.name ?? ''), 'en') || String(a.code ?? '').localeCompare(String(b.code ?? ''));
+        return [...sets].sort((a, b) => {
+            if (dated(a) !== dated(b)) return dated(a) ? -1 : 1;
+            if (dated(a) && a.released_at !== b.released_at) return a.released_at < b.released_at ? -1 : 1;
+            return byName(a, b);
+        });
+    }
+
+    // rank 0 code equals the query, 1 code starts with it, 2 folded name contains it; stable inside a rank
+    function searchSets(sets, query) {
+        const q = fold(typeof query === 'string' ? query : '').trim();
+        if (!q) return [...sets];
+        const rank = (s) => {
+            const code = fold(s.code);
+            if (code === q) return 0;
+            if (code.startsWith(q)) return 1;
+            return fold(s.name).includes(q) ? 2 : -1;
+        };
+        return sets.map((s) => ({ s, r: rank(s) })).filter((x) => x.r >= 0)
+            .sort((a, b) => a.r - b.r)   // Array.prototype.sort is stable
+            .map((x) => x.s);
+    }
+
+    // file = { rows, binder } from storage.local csvs; only setCode and setName are read, never quantities
+    function groupCsvSets(file) {
+        const rows = file && Array.isArray(file.rows) ? file.rows : [];
+        const binder = file && typeof file.binder === 'string' ? file.binder : '';
+        const sets = new Map();
+        for (const row of rows) {
+            if (!row || typeof row !== 'object') continue;
+            if (binder && binder !== '*' && row.binder !== binder) continue;
+            const code = typeof row.setCode === 'string' ? row.setCode.trim().toLowerCase() : '';
+            if (!SET_CODE.test(code) || sets.has(code)) continue;
+            sets.set(code, typeof row.setName === 'string' ? row.setName : '');
+        }
+        return [...sets].map(([code, name]) => ({ code, name }));
+    }
+
+    function resolveSet(list, code, fallbackName) {
+        const key = typeof code === 'string' ? code.trim().toLowerCase() : '';
+        return list.find((s) => s.code === key)
+            ?? { code: key, name: fallbackName || key.toUpperCase(), released_at: null, set_type: '', digital: false };
+    }
+
+    // Scryfall /sets JSON (or an array) -> validated records; throws so the page can fall back to its cache
+    function trimSets(json) {
+        const list = Array.isArray(json) ? json : json && Array.isArray(json.data) ? json.data : null;
+        if (!list) throw new Error('Scryfall set list is not a list');
+        const out = [];
+        for (const s of list) {
+            if (!s || typeof s !== 'object') continue;
+            const code = typeof s.code === 'string' ? s.code.trim().toLowerCase() : '';
+            const name = typeof s.name === 'string' ? s.name.trim() : '';
+            if (!SET_CODE.test(code) || !name || name.length > 200) continue;
+            out.push({
+                code,
+                name,
+                released_at: typeof s.released_at === 'string' && ISO_DATE.test(s.released_at) ? s.released_at : null,
+                set_type: typeof s.set_type === 'string' && s.set_type.length <= 40 ? s.set_type : '',
+                digital: s.digital === true
+            });
+        }
+        if (!out.length) throw new Error('Scryfall set list had no valid sets');
+        return out;
+    }
+
+    // stored page settings: anything unexpected falls back to the default
+    function normalizeSettings(raw) {
+        const o = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+        const bool = (v, d) => (typeof v === 'boolean' ? v : d);
+        const mm = typeof o.fixedMm === 'number' && Number.isFinite(o.fixedMm) && o.fixedMm > 0 ? clamp(o.fixedMm, 24.5, 1000) : null;
+        return {
+            icon: bool(o.icon, true),
+            name: bool(o.name, true),
+            code: bool(o.code, true),
+            fixedMm: mm,
+            foil: bool(o.foil, false),
+            cond: normalizeCondition(o.cond)
+        };
+    }
+
+
     const api = {
         TAPE_DOTS, DPI, MIN_DOTS, PAD_X, PAD_Y, ICON_GAP, CONDITIONS, MAX_DOTS, DEFAULT_MAX_MM,
         crc32, adler32, toBitmap, encodePng1bit, glyphFor, parseFragment, layoutLabel,
-        mmToDots, normalizeCondition, fold, fileName, uniqueNames, captionFor, bitmapToRgba
+        mmToDots, normalizeCondition, fold, fileName, uniqueNames, captionFor, bitmapToRgba,
+        HIDDEN_SET_TYPES, zipStore, filterSets, sortSets, searchSets, groupCsvSets, resolveSet, trimSets, normalizeSettings
     };
     if (typeof module !== 'undefined' && module.exports) module.exports = api;
     else root.LabelCore = api;
