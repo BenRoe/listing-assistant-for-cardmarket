@@ -286,6 +286,53 @@ const scenarios = [
         await again.waitForSelector(READY);
         expect(await again.isChecked('.card input.foil') && await again.inputValue('.card select.cond') === 'NM', 'defaults for a new card');
     }],
+    ['csv', async (page0, base, expect, env) => {
+        const rows = [
+            { setCode: 'ONS', setName: 'Onslaught', binder: 'Binder A', name: 'SENTINEL-CSV-ROW', qty: 99, price: 7777.77 },
+            { setCode: 'DOM', setName: 'Dominaria', binder: 'Binder A', name: 'Other Card', qty: 1, price: 0.5 },
+            { setCode: 'MOM', setName: 'March of the Machine', binder: 'Binder B', name: 'Elsewhere', qty: 1, price: 0.5 },
+            { setCode: 'Ons', setName: 'Onslaught again', binder: 'Binder A', name: 'Duplicate', qty: 2, price: 0.5 }
+        ];
+        const csvs = { a: { id: 'a', binder: 'Binder A', rows } };
+        const quiet = () => new Promise((r) => setTimeout(r, 200));
+
+        // Variant A: full fake storage
+        const page = await env.context.newPage();
+        await page.addInitScript((data) => { window.chrome = { storage: { local: { get: async () => ({ csvs: data, activeFile: 'a' }) } } }; }, csvs);
+        await page.goto(`${base}/labels.html`);
+        await page.waitForSelector('#allSets .set-row');
+        await page.waitForFunction(() => [...document.querySelectorAll('#csvSets .set-row')].map((r) => r.dataset.code).join() === 'ons,dom');
+        expect(await page.locator('#csvSection').isVisible(), 'CSV section visible');
+        expect((await rowCodes(page, 'csvSets')).join() === 'ons,dom', `csv rows ${await rowCodes(page, 'csvSets')}`);
+        expect((await page.textContent('#csvSets .set-row[data-code="ons"] .name')) === 'Onslaught', 'csv name resolved');
+        await page.click('#csvSets input[data-code="ons"]');
+        expect(await page.isChecked('#allSets input[data-code="ons"]'), 'ticking in the CSV list ticks the all-sets list');
+        await page.waitForSelector(READY);
+        await page.check('.card input.foil');
+        await page.uncheck('#optName');
+        await page.waitForSelector(READY);
+        const stored = await page.evaluate(() => Object.fromEntries(Object.entries(localStorage)));
+        const keys = Object.keys(stored).sort();
+        expect(keys.every((k) => ['cmlp.labels.settings', 'cmlp.labels.sets'].includes(k)), `localStorage keys ${keys}`);
+        const dump = JSON.stringify(stored);
+        expect(!dump.includes('SENTINEL-CSV-ROW') && !dump.includes('7777') && !/qty|price/i.test(dump), 'CSV data reached localStorage');
+
+        // Variants B (bare chrome object), C (rejected read), D (no chrome at all): fragment fallback, no errors
+        const variants = {
+            bare: () => { window.chrome = {}; },
+            rejecting: () => { window.chrome = { storage: { local: { get: () => Promise.reject(new Error('denied')) } } }; },
+            none: () => { delete window.chrome; }
+        };
+        for (const [name, init] of Object.entries(variants)) {
+            const p = await env.context.newPage();
+            await p.addInitScript(init);
+            await p.goto(`${base}/labels.html#sets=ons`);
+            await p.waitForSelector(READY);
+            await quiet();
+            expect(await p.locator('#csvSection').isHidden(), `${name}: CSV section stays hidden`);
+            expect(await p.locator('#cards .card').count() === 1, `${name}: fragment still works`);
+        }
+    }],
     ['offline', async (page, base, expect, env) => {
         env.sets.mode = 'abort';
         await page.goto(`${base}/labels.html#sets=ons`);

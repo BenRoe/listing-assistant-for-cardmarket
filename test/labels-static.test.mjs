@@ -20,7 +20,7 @@ test('[PAGE-05/adjacency] no labels page file mentions the extension API, commen
 
 test('labels scripts show data only through textContent: no HTML sink, eval or new Function', () => {
     const sinks = [/\.(innerHTML|outerHTML)\b/, /insertAdjacentHTML/, /document\.write/, /\beval\s*\(/, /new\s+Function\b/];
-    for (const f of labelFiles('.js')) {
+    for (const f of [...labelFiles('.js'), 'csv-sets.js']) {
         const text = read(`labels/${f}`).toString('utf8');
         for (const re of sinks) assert.doesNotMatch(text, re, `${f} matches ${re}`);
     }
@@ -159,4 +159,43 @@ test('[PAGE-05/adjacency] readCsvSets uses the browser namespace first when both
     const chrome = storage({ csvs: { a: fileOf('', [['DOM', 'Dominaria', '']]) }, activeFile: 'a' });
     const sets = await withApi({ browser, chrome }, () => readCsvSets(LabelCore.groupCsvSets));
     assert.deepEqual(sets.map((s) => s.code), ['ons']);
+});
+
+test('[PAGE-03/network] labels.js makes exactly one network call: GET https://api.scryfall.com/sets', () => {
+    const text = read('labels/labels.js').toString('utf8');
+    const calls = text.match(/\bfetch\(/g) ?? [];
+    assert.equal(calls.length, 1);
+    assert.match(text, /\bfetch\('https:\/\/api\.scryfall\.com\/sets',/);
+    for (const re of [/XMLHttpRequest/, /sendBeacon/, /WebSocket/, /EventSource/, /new\s+Image\b/]) assert.doesNotMatch(text, re);
+});
+
+test('[PRIVACY] localStorage is only used with the two preference and set-list keys', () => {
+    for (const f of [...labelFiles('.js'), 'csv-sets.js']) {
+        const text = read(`labels/${f}`).toString('utf8');
+        const used = text.match(/\blocalStorage\b/g) ?? [];
+        const keyed = [...text.matchAll(/\blocalStorage\.(?:getItem|setItem|removeItem)\(\s*'([^']+)'/g)].map((m) => m[1]);
+        assert.equal(used.length, keyed.length, `${f}: localStorage used without a literal key`);
+        for (const key of keyed) assert.ok(['cmlp.labels.settings', 'cmlp.labels.sets'].includes(key), `${f}: unexpected key ${key}`);
+    }
+});
+
+test('[PRIVACY] labels.js never reads CSV quantities, prices or rows', () => {
+    const text = read('labels/labels.js').toString('utf8');
+    assert.doesNotMatch(text, /\b(qty|price|quantity)\b|\.rows\b/i);
+});
+
+test('[PAGE-05/adjacency] labels.html has no inline script, no handler attribute and no remote URL', () => {
+    const html = read('labels/labels.html').toString('utf8');
+    for (const m of html.matchAll(/<script\b[^>]*>/gi)) assert.match(m[0], /\bsrc=/, `inline script ${m[0]}`);
+    assert.doesNotMatch(html, /\son[a-z]+\s*=/i);
+    assert.doesNotMatch(html, /\b(src|href)\s*=\s*["']?https?:/i);
+    assert.doesNotMatch(html, /url\(\s*["']?https?:/i);
+});
+
+test('[EXP-02/concurrency] the stale-render guard and the ZIP re-entrancy flag are in place', () => {
+    const text = read('labels/labels.js').toString('utf8');
+    assert.match(text, /const seq = \+\+rec\.seq/);
+    assert.match(text, /if \(seq !== rec\.seq\) return/);
+    assert.match(text, /if \(state\.building\) return/);
+    assert.match(text, /finally \{\s*state\.building = false/);
 });
