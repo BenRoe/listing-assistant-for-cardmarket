@@ -8,7 +8,6 @@
     const PAD_Y = 8;
     const ICON_GAP = 16;
     const ICON_MAX_WIDTH = 150;
-    const CODE_FONT = '700 44px Cinzel, serif';
     const MAX_SETS = 50;
 
     const CRC_TABLE = (() => {
@@ -132,14 +131,78 @@
         return codes;
     }
 
+    const CONDITIONS = ['MT', 'NM', 'EX', 'GD', 'LP', 'PL', 'PO'];
+    const MAX_DOTS = 7086;           // 1000 mm, the printer maximum
+    const DEFAULT_MAX_MM = 100;
+    const SMALL_SIZE = 22;
+    const BIG_SIZE = 44;
+    const WRAP_SIZES = [34, 30, 26];
+    const LINE_GAP = 12;
+    const BADGE_GAP = 10;
+    const BADGE_PAD_X = 7;
+    const BADGE_PAD_Y = 6;
+    const ONE_LINE_MAX = 520;
+    const NAME_FONT = (size) => `700 ${size}px Cinzel, serif`;
+    const WARNING_ORDER = ['no-glyph', 'empty', 'over-max', 'overflow-fixed'];
+
+    const clamp = (n, lo, hi) => Math.min(hi, Math.max(lo, n));
+    const mmToDots = (mm) => Math.round(mm / 25.4 * DPI);
+
+    function normalizeCondition(value) {
+        if (typeof value !== 'string') return 'none';
+        const code = value.trim().toUpperCase();
+        return CONDITIONS.includes(code) ? code : 'none';
+    }
+
+    // case, diacritics and ligatures removed, for search and file names
+    function fold(text) {
+        return String(text).normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+            .replace(/æ/g, 'ae').replace(/œ/g, 'oe').replace(/ß/g, 'ss');
+    }
+
+    // Text that fits in avail: one 44 px line, else the best two-line split at 34, 30 or 26 px.
+    function fitBig(text, avail, measure) {
+        const one = measure(NAME_FONT(BIG_SIZE), text).right;
+        if (one <= Math.min(avail, ONE_LINE_MAX)) return { size: BIG_SIZE, lines: [text], widest: one };
+        const words = text.split(' ');
+        let best = null;
+        for (const size of WRAP_SIZES) {
+            const font = NAME_FONT(size);
+            best = { size, lines: [text], widest: measure(font, text).right };
+            for (let i = 1; i < words.length; i++) {
+                const lines = [words.slice(0, i).join(' '), words.slice(i).join(' ')];
+                const widest = Math.max(...lines.map((l) => measure(font, l).right));
+                if (widest < best.widest) best = { size, lines, widest };
+            }
+            if (best.widest <= avail) break;
+        }
+        return best;
+    }
+
     // measure(font, text) -> { width, ascent, descent, left, right } (canvas actualBoundingBox*, ink extents)
     // Returns { width, height, ops, empty, warnings }; the page draws ops verbatim.
     function layoutLabel(input, measure) {
+        const code = typeof input.code === 'string' ? input.code.trim().toUpperCase() : '';
+        const name = typeof input.name === 'string' ? input.name.trim() : '';
+        const cond = normalizeCondition(input.cond);
+        const foil = input.foil === true;
+        const warn = new Set();
+        const showIcon = input.showIcon !== false;
+        const hasGlyph = typeof input.glyph === 'number';
+        if (showIcon && !hasGlyph) warn.add('no-glyph');
+
+        // the code is promoted to the big line when the name is off or empty (D-04) and is then not repeated
+        const showName = input.showName !== false;
+        const showCode = input.showCode !== false;
+        const promoted = !(showName && name) && (showName || showCode) && code !== '';
+        const bigText = showName && name ? name : promoted ? code : '';
+        const smallCode = showCode && !promoted ? code : '';
+
         const ops = [];
         let contentRight = PAD_X;
         let textX = PAD_X;
-
-        if (input.showIcon !== false && typeof input.glyph === 'number') {
+        let hasIcon = false;
+        if (showIcon && hasGlyph) {
             const m = measure('100px Keyrune', String.fromCodePoint(input.glyph));
             const inkH = m.ascent + m.descent;
             const inkW = m.left + m.right;
@@ -152,31 +215,136 @@
                     x: PAD_X + m.left * scale,
                     y: TAPE_DOTS / 2 + (m.ascent - m.descent) * scale / 2
                 });
+                hasIcon = true;
                 contentRight = PAD_X + inkW * scale;
                 textX = contentRight + ICON_GAP;
             }
         }
 
-        if (input.showCode !== false && typeof input.code === 'string' && input.code) {
-            const text = input.code.toUpperCase();
-            const cap = measure(CODE_FONT, 'H').ascent;
-            const m = measure(CODE_FONT, text);
-            ops.push({ type: 'text', font: CODE_FONT, text, x: textX, y: TAPE_DOTS / 2 + cap / 2 });
-            contentRight = textX + m.right;
+        const hasSmall = Boolean(smallCode) || foil || cond !== 'none';
+        if (!hasIcon && !bigText && !hasSmall) {
+            warn.add('empty');
+            return { width: MIN_DOTS, height: TAPE_DOTS, ops: [], empty: true, warnings: WARNING_ORDER.filter((w) => warn.has(w)) };
         }
 
-        return {
-            width: Math.max(MIN_DOTS, Math.ceil(contentRight + PAD_X)),
-            height: TAPE_DOTS,
-            ops,
-            empty: ops.length === 0,
-            warnings: []
-        };
+        const fixedMm = input.fixedMm;
+        const fixedDots = typeof fixedMm === 'number' && Number.isFinite(fixedMm) && fixedMm > 0
+            ? clamp(mmToDots(fixedMm), MIN_DOTS, MAX_DOTS) : null;
+        const maxMm = typeof input.maxMm === 'number' && Number.isFinite(input.maxMm) && input.maxMm > 0 ? input.maxMm : DEFAULT_MAX_MM;
+        const limitDots = fixedDots ?? clamp(mmToDots(maxMm), MIN_DOTS, MAX_DOTS);
+        const avail = Math.max(limitDots - PAD_X - textX, 40);
+
+        // line boxes top to bottom: { height, draw(top) }
+        const lines = [];
+        if (bigText) {
+            const fit = fitBig(bigText, avail, measure);
+            const font = NAME_FONT(fit.size);
+            const cap = Math.round(measure(font, 'H').ascent);
+            for (const text of fit.lines) {
+                lines.push({
+                    height: cap,
+                    draw: (top) => {
+                        ops.push({ type: 'text', font, text, x: textX, y: top + cap });
+                        contentRight = Math.max(contentRight, textX + measure(font, text).right);
+                    }
+                });
+            }
+        }
+        if (hasSmall) {
+            const font = NAME_FONT(SMALL_SIZE);
+            const cap = Math.round(measure(font, 'H').ascent);
+            const hasBadge = foil || cond !== 'none';
+            lines.push({
+                height: hasBadge ? cap + 2 * BADGE_PAD_Y : cap,
+                draw: (top) => {
+                    const baseline = top + (hasBadge ? BADGE_PAD_Y : 0) + cap;
+                    let x = textX;
+                    const place = (text, radius) => {
+                        const w = Math.ceil(measure(font, text).width) + 2 * BADGE_PAD_X;
+                        ops.push({ type: 'box', x, y: top, w, h: cap + 2 * BADGE_PAD_Y, radius, lineWidth: 2 });
+                        ops.push({ type: 'text', font, text, x: x + BADGE_PAD_X, y: baseline });
+                        x += w + BADGE_GAP;
+                    };
+                    if (smallCode) {
+                        ops.push({ type: 'text', font, text: smallCode, x, y: baseline });
+                        x += measure(font, smallCode).right + BADGE_GAP;
+                    }
+                    if (foil) place('FOIL', 6);
+                    if (cond !== 'none') place(cond, 0);
+                    contentRight = Math.max(contentRight, x - BADGE_GAP);
+                }
+            });
+        }
+
+        const total = lines.reduce((n, l) => n + l.height, 0) + LINE_GAP * Math.max(0, lines.length - 1);
+        let top = Math.round((TAPE_DOTS - total) / 2);
+        for (const line of lines) {
+            line.draw(top);
+            top += line.height + LINE_GAP;
+        }
+
+        const contentWidth = Math.ceil(contentRight + PAD_X);
+        let width;
+        if (fixedDots !== null) {
+            width = fixedDots;
+            if (contentWidth > width) warn.add('overflow-fixed');
+        } else {
+            width = clamp(contentWidth, MIN_DOTS, MAX_DOTS);
+            if (contentWidth > limitDots) warn.add('over-max');
+        }
+        return { width, height: TAPE_DOTS, ops, empty: false, warnings: WARNING_ORDER.filter((w) => warn.has(w)) };
+    }
+
+    const slug = (text) => fold(typeof text === 'string' ? text : '')
+        .replace(/['’]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+
+    // code-name-foil-condition.png: only [a-z0-9-] survives, so no path separators or dot-dot reach a ZIP entry
+    function fileName({ code, name, foil, cond } = {}) {
+        const condition = normalizeCondition(cond);
+        const parts = [slug(code), slug(name), foil === true ? 'foil' : '', condition === 'none' ? '' : condition.toLowerCase()];
+        const base = parts.filter(Boolean).join('-').slice(0, 100).replace(/-+$/, '');
+        return `${base || 'label'}.png`;
+    }
+
+    // Keeps order; a duplicate gets -2, -3 ... before the extension, skipping every name used or still to come.
+    function uniqueNames(names) {
+        const reserved = new Set(names.map((n) => n.toLowerCase()));
+        const used = new Set();
+        return names.map((name) => {
+            let out = name;
+            if (used.has(out.toLowerCase())) {
+                const dot = name.lastIndexOf('.');
+                const stem = dot > 0 ? name.slice(0, dot) : name;
+                const ext = dot > 0 ? name.slice(dot) : '';
+                for (let n = 2; ; n++) {
+                    out = `${stem}-${n}${ext}`;
+                    if (!used.has(out.toLowerCase()) && !reserved.has(out.toLowerCase())) break;
+                }
+            }
+            used.add(out.toLowerCase());
+            return out;
+        });
+    }
+
+    const captionFor = (widthDots) => `${Math.round(widthDots / DPI * 25.4)} x 18 mm printable (24 mm tape)`;
+
+    // packed 1-bit bitmap -> RGBA, ink black and paper white, both opaque (inverse of toBitmap)
+    function bitmapToRgba({ width, height, stride, bits }) {
+        const rgba = new Uint8ClampedArray(width * height * 4);
+        for (let y = 0; y < height; y++) {
+            for (let x = 0; x < width; x++) {
+                const v = bits[y * stride + (x >> 3)] & (0x80 >> (x & 7)) ? 0 : 255;
+                rgba.fill(v, (y * width + x) * 4, (y * width + x) * 4 + 3);
+                rgba[(y * width + x) * 4 + 3] = 255;
+            }
+        }
+        return rgba;
     }
 
     const api = {
-        TAPE_DOTS, DPI, MIN_DOTS, PAD_X, PAD_Y, ICON_GAP,
-        crc32, adler32, toBitmap, encodePng1bit, glyphFor, parseFragment, layoutLabel
+        TAPE_DOTS, DPI, MIN_DOTS, PAD_X, PAD_Y, ICON_GAP, CONDITIONS, MAX_DOTS, DEFAULT_MAX_MM,
+        crc32, adler32, toBitmap, encodePng1bit, glyphFor, parseFragment, layoutLabel,
+        mmToDots, normalizeCondition, fold, fileName, uniqueNames, captionFor, bitmapToRgba
     };
     if (typeof module !== 'undefined' && module.exports) module.exports = api;
     else root.LabelCore = api;
