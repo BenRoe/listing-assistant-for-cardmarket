@@ -154,7 +154,9 @@ const PrintUI = (function () {
                 while (rec.printed < rec.copies) {
                     const k = rec.printed + 1;
                     setState(rec, rec.copies === 1 ? 'Printing' : `Printing ${k} of ${rec.copies}`);
-                    await session.print(bitmap, { cut: settings().cut });
+                    // shortcut: a trailing record that renders empty leaves the real last label chained in the head, press the printer's power button twice to eject it
+                    const last = k === rec.copies && recs.slice(recs.indexOf(rec) + 1).every((r) => r.printed >= r.copies);
+                    await session.print(bitmap, { cut: settings().cut, last });
                     rec.printed = k;
                     setState(rec, rec.copies === 1 ? 'Printed' : `Printed ${k} of ${rec.copies}`);
                 }
@@ -189,7 +191,8 @@ const PrintUI = (function () {
         });
         $('refresh').addEventListener('click', refreshStatus);
         $('printAll').addEventListener('click', printAll);
-        $('optCut').addEventListener('change', (e) => { updateSettings({ cut: e.target.checked }); });
+        $('cutNote').hidden = settings().cut;
+        $('optCut').addEventListener('change', (e) => { updateSettings({ cut: e.target.checked }); $('cutNote').hidden = e.target.checked; });
         refresh();
         // D-06: a device granted before connects without a click; any failure stays silent
         refreshKnown().then(() => {

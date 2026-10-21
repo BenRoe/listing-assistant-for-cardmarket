@@ -11,6 +11,7 @@
     const INVALIDATE_LEN = 100;
     const STATUS_LEN = 32;
     const ADVANCED_MODE = 0x08;           // ESC i K bit 3: no chain printing, feed and cut after the label
+    const ADVANCED_MODE_CHAIN = 0x10;     // cut off and chain printing: no feed to the cutter after the label, the next job continues the strip
     const ADVANCED_MODE_CUT_OFF = 0x18;   // bit 4 no cut; 0x08 alone still cut at the end of each label (HW-6)
     // Convention T: line x is canvas column x, canvas row 0 is the MSB of byte 0. A wrong first print is fixed by flipping a flag here (HW-1).
     const ORIENTATION = { reverseLines: false, reversePins: false };
@@ -55,34 +56,39 @@
         return orientation.reverseLines ? lines.reverse() : lines;
     }
 
-    // One complete single-label job. Never ESC i A (unsupported on this model) and never Z (raw lines only).
-    function buildJob(bitmap, { cut = true, feedDots = FEED_DOTS, leadDots = LEAD_DOTS, trailDots = TRAIL_DOTS, orientation = ORIENTATION } = {}) {
+    // One complete single-label job. next: a further page of a chain already held in the printer; it sends only the print info and the raster, no reset (a reset or status request drops the held page, HW-6). Never ESC i A (unsupported on this model) and never Z (raw lines only).
+    function buildJob(bitmap, { cut = true, feedDots = FEED_DOTS, leadDots = LEAD_DOTS, trailDots = TRAIL_DOTS, chain = false, next = false, orientation = ORIENTATION } = {}) {
         if (bitmap.height !== TAPE_DOTS) throw new Error('label must be 128 dots high');
         if (bitmap.width + leadDots + trailDots + 2 * feedDots > MAX_LINES) throw new Error('Label is too long to print');
         const lines = rasterLines(bitmap, orientation);
         for (let i = 0; i < leadDots; i++) lines.unshift(new Uint8Array(HEAD_BYTES));   // first lines sent are the leading end of the tape
         for (let i = 0; i < trailDots; i++) lines.push(new Uint8Array(HEAD_BYTES));   // last lines sent are the trailing end of the tape
         const n = lines.length;
-        const header = Uint8Array.of(
+        const header = next ? Uint8Array.of(
+            ...(chain ? [] : [0x1b, 0x69, 0x4b, ADVANCED_MODE_CUT_OFF]),   // last page: back to no chain
+            0x1b, 0x69, 0x7a, 0x84, 0x00, TAPE_MM, 0x00,
+            n & 0xff, (n >> 8) & 0xff, (n >> 16) & 0xff, (n >>> 24) & 0xff, 0x01, 0x00   // not the first page
+        ) : Uint8Array.of(
             0x1b, 0x40,                                                   // initialize
             0x1b, 0x69, 0x61, 0x01,                                       // raster mode
             0x1b, 0x69, 0x21, 0x00,                                       // status notification on
             0x1b, 0x69, 0x7a, 0x84, 0x00, TAPE_MM, 0x00,                  // print info: recover and width valid, 24 mm, length 0
             n & 0xff, (n >> 8) & 0xff, (n >> 16) & 0xff, (n >>> 24) & 0xff, 0x00, 0x00,   // raster line count, first page, fixed 0
             0x1b, 0x69, 0x4d, cut ? 0x40 : 0x00,                          // auto cut
-            0x1b, 0x69, 0x4b, cut ? ADVANCED_MODE : ADVANCED_MODE_CUT_OFF,   // advanced mode
+            0x1b, 0x69, 0x4b, cut ? ADVANCED_MODE : (chain ? ADVANCED_MODE_CHAIN : ADVANCED_MODE_CUT_OFF),   // advanced mode
             0x1b, 0x69, 0x64, feedDots & 0xff, (feedDots >> 8) & 0xff,    // margin
             0x4d, 0x00                                                    // no compression
         );
-        const out = new Uint8Array(INVALIDATE_LEN + header.length + n * (3 + HEAD_BYTES) + 1);
-        out.set(header, INVALIDATE_LEN);
-        let o = INVALIDATE_LEN + header.length;
+        const lead = next ? 0 : INVALIDATE_LEN;
+        const out = new Uint8Array(lead + header.length + n * (3 + HEAD_BYTES) + 1);
+        out.set(header, lead);
+        let o = lead + header.length;
         for (const line of lines) {
             out.set([0x47, 0x10, 0x00], o);
             out.set(line, o + 3);
             o += 3 + HEAD_BYTES;
         }
-        out[o] = 0x1a;   // print with feeding
+        out[o] = !cut && chain ? 0x0c : 0x1a;   // 0x0c prints and keeps the label in the head, 0x1a feeds it out
         return out;
     }
 
@@ -148,7 +154,7 @@
         `The printer has ${status.widthMm} mm tape loaded, but this label is made for ${wantMm} mm tape.`;
 
     const api = {
-        HEAD_BYTES, TAPE_DOTS, TAPE_MM, FEED_DOTS, TRAIL_DOTS, LEAD_DOTS, MAX_LINES, INVALIDATE_LEN, STATUS_LEN, ADVANCED_MODE, ADVANCED_MODE_CUT_OFF, ORIENTATION,
+        HEAD_BYTES, TAPE_DOTS, TAPE_MM, FEED_DOTS, TRAIL_DOTS, LEAD_DOTS, MAX_LINES, INVALIDATE_LEN, STATUS_LEN, ADVANCED_MODE, ADVANCED_MODE_CHAIN, ADVANCED_MODE_CUT_OFF, ORIENTATION,
         invalidate, init, statusRequest, rasterLines, buildJob, takeFrame, parseStatus, formatRaw, describeStatus, tapeMismatchText, concat, SENTENCES
     };
     if (typeof module !== 'undefined' && module.exports) module.exports = api;

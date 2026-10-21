@@ -32,6 +32,7 @@
 
     function createSession(transport) {
         let buffer = new Uint8Array(0);
+        let held = false;   // the previous label was printed chained and is still in the head; the next job must continue it without a reset
 
         // After any failure the receive buffer starts clean; the next readStatus resets the printer with the invalidate bytes
         const clearOnError = (fn) => async (...args) => {
@@ -39,6 +40,7 @@
                 return await fn(...args);
             } catch (e) {
                 buffer = new Uint8Array(0);
+                held = false;
                 throw e;
             }
         };
@@ -116,13 +118,16 @@
         }
 
         // One single-label job. Nothing is sent after the first job byte until the completion frame, and a job is never resent.
-        const print = clearOnError(async (bitmap, { cut = true } = {}) => {
-            const status = await readStatus();
-            const verdict = PTouch.describeStatus(status);
-            if (!verdict.ok) throw failure(verdict, status);
-            if (status.widthMm !== PTouch.TAPE_MM) throw new PrinterError('tape-mismatch', PTouch.tapeMismatchText(status), PTouch.formatRaw(status.raw), status);
+        const print = clearOnError(async (bitmap, { cut = true, last = true } = {}) => {
+            const next = held;
+            if (!next) {
+                const status = await readStatus();
+                const verdict = PTouch.describeStatus(status);
+                if (!verdict.ok) throw failure(verdict, status);
+                if (status.widthMm !== PTouch.TAPE_MM) throw new PrinterError('tape-mismatch', PTouch.tapeMismatchText(status), PTouch.formatRaw(status.raw), status);
+            }
 
-            const job = PTouch.buildJob(bitmap, { cut });
+            const job = PTouch.buildJob(bitmap, { cut, chain: !last, next });
             buffer = new Uint8Array(0);
             for (let at = 0; at < job.length; at += transport.chunkSize) {
                 await send(job.subarray(at, at + transport.chunkSize));
@@ -136,6 +141,7 @@
             }
             // The job is printed; the trailing phase change is optional and a failure here must not mark the label failed
             await nextStatus(TAIL_TIMEOUT_MS).catch(() => {});
+            held = !cut && !last;
         });
 
         return { readStatus, print };

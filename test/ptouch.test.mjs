@@ -283,3 +283,22 @@ test('[D-08] tapeMismatchText names both widths', () => {
     assert.equal(P.tapeMismatchText({ widthMm: 12 }), 'The printer has 12 mm tape loaded, but this label is made for 24 mm tape.');
     assert.equal(P.tapeMismatchText({ widthMm: 24 }, 18), 'The printer has 24 mm tape loaded, but this label is made for 18 mm tape.');
 });
+
+test('[HW-6 chain] cut off and chain: ESC i K 0x10 and the job ends with 0x0c; the last label of a run ends with 0x1a', () => {
+    const chained = P.buildJob(golden, { cut: false, chain: true, orientation: T, leadDots: 0 });
+    const last = P.buildJob(golden, { cut: false, orientation: T, leadDots: 0 });
+    assert.equal(chained[130], 0x10);
+    assert.equal(chained[chained.length - 1], 0x0c);
+    assert.equal(last[last.length - 1], 0x1a);
+    assert.equal(P.buildJob(golden, { cut: true, chain: true, orientation: T, leadDots: 0 })[chained.length - 1], 0x1a, 'cut on never chains');
+});
+
+test('[HW-6 chain] a next page is only print info, raster and terminator: no reset, no invalidate', () => {
+    const job = P.buildJob(golden, { cut: false, chain: true, next: true, orientation: T, leadDots: 0 });
+    assert.deepEqual(Array.from(job.subarray(0, 13)), [0x1b, 0x69, 0x7a, 0x84, 0x00, 0x18, 0x00, 0x11, 0, 0, 0, 0x01, 0x00]);
+    assert.equal(job.length, 13 + 17 * 19 + 1);
+    assert.equal(job[job.length - 1], 0x0c);
+    const final = P.buildJob(golden, { cut: false, next: true, orientation: T, leadDots: 0 });
+    assert.deepEqual(Array.from(final.subarray(0, 4)), [0x1b, 0x69, 0x4b, 0x18], 'the last page returns to no chain');
+    assert.equal(final[final.length - 1], 0x1a);
+});
