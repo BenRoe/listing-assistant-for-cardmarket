@@ -7,17 +7,33 @@
 
 ## Contents
 
+- [Features](#features)
 - [Install](#install)
   - [Firefox](#firefox)
   - [Chromium (Chrome, Brave, Edge)](#chromium-chrome-brave-edge)
-- [Features](#features)
 - [Edition labels](#edition-labels)
   - [Printing](#printing)
-- [Comparison with other tools](#comparison-with-other-tools)
 - [Privacy](#privacy)
 - [Contributing](#contributing)
 - [License and disclaimer](#license-and-disclaimer)
 - [Documentation](#documentation)
+
+<table>
+  <tr>
+    <td width="33%" valign="top">
+      <a href="docs/manabox-csv-list.jpeg"><img src="docs/manabox-csv-list.jpeg" width="100%" alt="Panel with a loaded ManaBox CSV above a Cardmarket product page with the pre-filled sell form"></a>
+      <sub>The panel with a loaded ManaBox CSV, above a Cardmarket product page with the pre-filled sell form.</sub>
+    </td>
+    <td width="33%" valign="top">
+      <a href="docs/label-printing.jpeg"><img src="docs/label-printing.jpeg" width="100%" alt="Edition labels page with ticked sets, label previews and print buttons"></a>
+      <sub>Edition labels page: pick sets, check the preview, print or download.</sub>
+    </td>
+    <td width="33%" valign="top">
+      <a href="docs/settings.jpeg"><img src="docs/settings.jpeg" width="100%" alt="Settings page: price source, multiplier, rounding and minimum price"></a>
+      <sub>Settings: price source, multiplier, rounding and minimum price.</sub>
+    </td>
+  </tr>
+</table>
 
 Browser extension (Manifest V3, plain JavaScript, Firefox and Chromium) that helps to list cards from a ManaBox CSV on Cardmarket, one card at a time.
 
@@ -29,8 +45,24 @@ Browser extension (Manifest V3, plain JavaScript, Firefox and Chromium) that hel
 
 Cards are identified by the Scryfall ID in the ManaBox CSV, which Scryfall maps to the Cardmarket product ID, so there is no name matching.
 
-<a href="docs/manabox-csv-list.jpeg"><img src="docs/manabox-csv-list.jpeg" width="480" alt="Panel with a loaded ManaBox CSV above a Cardmarket product page with the pre-filled sell form"></a>
-<a href="docs/settings.jpeg"><img src="docs/settings.jpeg" width="330" alt="Settings page: price source, multiplier, rounding and minimum price"></a>
+## Features
+
+- **Panel under the search bar** on every Magic page on Cardmarket; collapsible, remembers its state.
+- **Several ManaBox CSVs**, list or collection exports, each kept separately with a file selector; a binder selector for collection exports.
+- **Drag and drop** CSV files onto the panel (the panel fades and shows a hint; other file types are refused), or use "Load ManaBox CSV".
+- **Sortable table**: click a column header to sort ascending, descending, or back to CSV order. The `#` column sorts by scanned order (ManaBox's `Added` time).
+- **Exact card match** through the Scryfall ID in the CSV (Scryfall gives the Cardmarket product ID); cached.
+- **Search button** opens the product page filtered to the card's language, minimum condition and foil state, on top of your saved Cardmarket filter.
+- **Sell form pre-filled**: quantity, language, condition, foil, signed, altered, comment ("Misprint" optional) and price.
+- **Price from the live market**: median or lowest of the offers shown for that filter, or none; multiplier, rounding and minimum price in the settings.
+- **Click an offer price** in the offers table to copy it into the sell form's price field.
+- **Filter changes keep your form**: the Cardmarket filter button reloads the page, the plugin puts the sell form values back (an auto-filled price is recomputed for the new filter, a price you entered is kept).
+- **Condition and language follow the filter**: changing them in the sell form applies them to the offers filter. The page scrolls to the card title after a search or filter reload.
+- **Stay logged in (optional, off by default)**: Cardmarket logs you out after 1 hour without activity. When enabled in the settings, an open Cardmarket tab loads one Cardmarket page every 30 minutes while you are logged in. No password is stored.
+- **Listed tracking per loaded CSV**, marks a card "listed" after Cardmarket's success message; manual "done" and "undo" per row.
+- **Nothing is submitted for you** and nothing leaves the browser except Scryfall IDs sent to `api.scryfall.com`.
+
+_Why Scryfall: the ManaBox CSV has no Cardmarket product ID, but every Scryfall card record includes it (`cardmarket_id`). The plugin sends only the Scryfall IDs from your CSV (up to 75 per request, once per card, then cached) and reads back the product ID._
 
 ## Install
 
@@ -55,25 +87,6 @@ The extension is not published on the Chrome Web Store, because Google charges a
 2. Open `chrome://extensions` (Brave: `brave://extensions`, Edge: `edge://extensions`) and turn on developer mode.
 3. Click "Load unpacked" and pick that folder.
 
-## Features
-
-- **Panel under the search bar** on every Magic page on Cardmarket; collapsible, remembers its state.
-- **Several ManaBox CSVs**, list or collection exports, each kept separately with a file selector; a binder selector for collection exports.
-- **Drag and drop** CSV files onto the panel (the panel fades and shows a hint; other file types are refused), or use "Load ManaBox CSV".
-- **Sortable table**: click a column header to sort ascending, descending, or back to CSV order. The `#` column sorts by scanned order (ManaBox's `Added` time).
-- **Exact card match** through the Scryfall ID in the CSV (Scryfall gives the Cardmarket product ID); cached.
-- **Search button** opens the product page filtered to the card's language, minimum condition and foil state, on top of your saved Cardmarket filter.
-- **Sell form pre-filled**: quantity, language, condition, foil, signed, altered, comment ("Misprint" optional) and price.
-- **Price from the live market**: median or lowest of the offers shown for that filter, or none; multiplier, rounding and minimum price in the settings.
-- **Click an offer price** in the offers table to copy it into the sell form's price field.
-- **Filter changes keep your form**: the Cardmarket filter button reloads the page, the plugin puts the sell form values back (an auto-filled price is recomputed for the new filter, a price you entered is kept).
-- **Condition and language follow the filter**: changing them in the sell form applies them to the offers filter. The page scrolls to the card title after a search or filter reload.
-- **Stay logged in (optional, off by default)**: Cardmarket logs you out after 1 hour without activity. When enabled in the settings, an open Cardmarket tab loads one Cardmarket page every 30 minutes while you are logged in. No password is stored.
-- **Listed tracking per loaded CSV**, marks a card "listed" after Cardmarket's success message; manual "done" and "undo" per row.
-- **Nothing is submitted for you** and nothing leaves the browser except Scryfall IDs sent to `api.scryfall.com`.
-
-_Why Scryfall: the ManaBox CSV has no Cardmarket product ID, but every Scryfall card record includes it (`cardmarket_id`). The plugin sends only the Scryfall IDs from your CSV (up to 75 per request, once per card, then cached) and reads back the product ID._
-
 ## Edition labels
 
 The panel has an **Edition labels** button. It opens a page where you pick sets from the loaded CSV, search the Scryfall set list, or preselect sets with `labels.html#sets=ons,dom`. Each label can show the Keyrune set icon, the set name, the set code, a FOIL mark and a Cardmarket condition code (never a quantity). The preview is exact. Export a PNG for 24 mm tape (128 dots high, 180 dpi), one at a time or all as one ZIP.
@@ -93,27 +106,6 @@ On Brave, Chrome or Edge you can print to a Brother PT-P710BT over USB without P
 - Bluetooth is not offered: it did not work on macOS (`SDP query timeout`). See [docs/label-printing.md](docs/label-printing.md).
 - Firefox has no WebUSB, so **Connect USB** is disabled there with a reason; PNG and ZIP export work. Results per browser: [docs/label-printing.md](docs/label-printing.md).
 - No extra extension permission is used; the browser asks per device.
-
-## Comparison with other tools
-
-|                   | This plugin                                                                                                      | [cardmarket-bulk-import](https://github.com/PedroPerpetua/cardmarket-bulk-import) | [cardmarket-helper](https://github.com/SuppenNudel/cardmarket-helper)                                                                | [MtgCsvHelper](https://github.com/StepKie/MtgCsvHelper) |
-| ----------------- | ---------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------- |
-| Kind / browsers   | Extension: Chromium (tested), Firefox (manifest ready, untested)                                                 | Extension: Chrome and Firefox                                                     | Extension: Firefox                                                                                                                   | Web app (any modern browser) and .NET console app       |
-| Purpose           | List cards one by one from a ManaBox CSV with the sell form pre-filled                                           | Fill Cardmarket's "Bulk List Cards" table from a CSV                              | Many helpers for Cardmarket (thumbnails, owned printings, sell-form fill from a stored ManaBox collection, wants/orders export, ...) | Convert collection CSVs between sites                   |
-| Cardmarket page   | Magic product pages (Sell tab), panel on every Magic page                                                        | `Stock/ListingMethods/BulkListing`                                                | Product, offer, order and wants pages                                                                                                | none                                                    |
-| Card matching     | Scryfall ID -> Cardmarket product ID (exact)                                                                     | Card name (fuzzy) and set via MTGJSON                                             | Scryfall ID / Cardmarket ID                                                                                                          | Scryfall ID, names, set codes                           |
-| Price             | Median or lowest of the offers matching the card's language/condition/foil filter; multiplier, rounding, minimum | From the CSV price column                                                         | Price logic over low, trend and average prices plus top offers                                                                       | Not applicable                                          |
-| Volume            | One card per click, you review each                                                                              | Up to 100 cards per import, Cardmarket shows at most 300 cards per filter         | One card per click                                                                                                                   | Whole files                                             |
-| Listed tracking   | Per loaded CSV, set automatically after Cardmarket's confirmation                                                | none                                                                              | Uses ManaBox's "misprint" field as a manual marker                                                                                   | none                                                    |
-| Multiple CSVs     | Yes                                                                                                              | One file per import                                                               | One stored collection                                                                                                                | Not applicable                                          |
-| Automatic Submits | No                                                                                                               | No                                                                                | No                                                                                                                                   | Not applicable                                          |
-
-Notes:
-
-- cardmarket-bulk-import is faster when you list many cards of one expansion in a single batch. It matches by name, only sees the cards on the current page of the bulk table, and imports nothing for cards beyond the 300-card cap (for example high collector numbers such as lands).
-- cardmarket-helper covers far more than listing; this plugin is intentionally small and separate. The helper's "Fill" works on the Singles page from a collection stored in the browser.
-- MtgCsvHelper cannot produce anything Cardmarket accepts: its Cardmarket format is import only, and Cardmarket has no CSV upload for listings.
-- The comparison reflects the READMEs and code of the other tools as read on 2026-10-16; check them for newer changes.
 
 ## Privacy
 
