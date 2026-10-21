@@ -18,6 +18,9 @@
         #picker input[type=search] { width: 100%; box-sizing: border-box; padding: 6px 8px; }
         .tips { max-width: 70ch; color: GrayText; }
         .tips ol { margin: 0; padding-left: 20px; }
+        .tips summary { cursor: pointer; }
+        .tips summary h2 { display: inline; }
+        .tips[open] summary { margin-bottom: 8px; }
         .hint { margin: 4px 0 8px; color: GrayText; font-size: 12px; }
         #status { min-height: 1.2em; margin: 8px 0 0; font-size: 12px; }
         .set-list { list-style: none; margin: 0; padding: 0; max-height: 50vh; overflow-y: auto; border: 1px solid GrayText; border-radius: 6px; }
@@ -29,7 +32,11 @@
         .set-row .date { color: GrayText; font-size: 12px; }
         .set-note { padding: 8px; color: GrayText; }
         .toolbar { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; margin-bottom: 16px; }
+        .toolbar label { display: inline-flex; align-items: center; gap: 4px; }
         .toolbar input[type=number] { width: 6ch; }
+        .info { position: relative; display: inline-block; width: 1.4em; height: 1.4em; line-height: 1.4em; text-align: center; border: 1px solid GrayText; border-radius: 50%; color: GrayText; font-size: 11px; cursor: help; }
+        .info::after { content: attr(data-tip); position: absolute; left: 50%; top: 100%; transform: translateX(-20%); margin-top: 6px; width: 28ch; padding: 6px 8px; border: 1px solid GrayText; border-radius: 6px; background: Canvas; color: CanvasText; font-size: 12px; line-height: 1.3; text-align: left; white-space: normal; z-index: 10; visibility: hidden; opacity: 0; transition: opacity .1s; pointer-events: none; }
+        .info:hover::after, .info:focus::after { visibility: visible; opacity: 1; }
         #printerBar { margin-bottom: 8px; }
         #printerStatus { min-height: 1.2em; margin: 0 0 4px; font-size: 12px; }
         .raw { min-height: 1.2em; margin: 0 0 16px; font: 11px ui-monospace, monospace; color: GrayText; overflow-wrap: anywhere; }
@@ -37,7 +44,7 @@
         .card-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
         .print-state { font-size: 12px; }
         input.copies { width: 5ch; }
-        #empty { color: GrayText; }
+        #empty { color: CanvasText; font-size: 18px; font-weight: 600; margin: 0 0 32px; }
         .card { border: 1px solid GrayText; border-radius: 6px; padding: 12px; margin: 0 0 16px; }
         .card-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
         .card-title { margin: 0 0 8px; }
@@ -69,17 +76,17 @@
         </aside>
         <main>
             <div class="toolbar">
-                <label><input id="optIcon" type="checkbox"> Show icon</label>
-                <label><input id="optName" type="checkbox"> Show name</label>
-                <label><input id="optCode" type="checkbox"> Show code</label>
-                <label title="Long names break into two lines and shrink to stay within this length">Max label length (mm) <input id="maxMm" type="number" min="25" max="1000" step="1" placeholder="100"></label>
+                <label>Show icon <input id="optIcon" type="checkbox"></label>
+                <label>Show name <input id="optName" type="checkbox"></label>
+                <label>Show code <input id="optCode" type="checkbox"></label>
+                <label>Max label length (mm) <span class="info" tabindex="0" role="note" aria-label="Longest label to print, in mm. Names that would make the label longer break into two lines and shrink to fit." data-tip="Longest label to print, in mm. Names that would make the label longer break into two lines and shrink to fit.">?</span> <input id="maxMm" type="number" min="25" max="1000" step="1" placeholder="100"></label>
                 <button id="downloadAll" type="button" disabled>Download all (ZIP)</button>
             </div>
             <div class="toolbar" id="printerBar">
                 <button id="connectUsb" type="button">Connect USB</button>
                 <span id="usbReason" class="reason"></span>
                 <button id="refresh" type="button" disabled>Refresh</button>
-                <label><input id="optCut" type="checkbox"> Cut after each label</label>
+                <label>Cut after each label <input id="optCut" type="checkbox"></label>
                 <button id="printAll" type="button" disabled>Print all</button>
             </div>
             <p id="cutNote" class="raw">Cut off: the last label stays in the printer. Press the power button twice quickly to feed it out and cut it.</p>
@@ -87,14 +94,14 @@
             <p id="printerRaw" class="raw"></p>
             <p id="empty">No sets ticked. Tick a set on the left to make a label.</p>
             <div id="cards"></div>
-            <section class="tips">
-                <h2>Printing tips (Brother P-touch Editor, 24 mm tape)</h2>
+            <details class="tips" open>
+                <summary><h2>Printing tips (Brother P-touch Editor, 24 mm tape)</h2></summary>
                 <ol>
                     <li>Select your printer and <b>24mm</b> tape in P-touch Editor, then import the PNG with <b>Image</b>.</li>
                     <li>The editor imports the PNG far too small. Select the image in the Layout panel, keep <b>Fix Aspect Ratio</b> on and type <b>Height = 18 mm</b>. The width follows, so the label gets its real length.</li>
                     <li>Set <b>Y</b> to 3 mm to centre the artwork on the tape (18 mm print area on 24 mm tape) and leave <b>Set Length</b> off.</li>
                 </ol>
-            </section>
+            </details>
         </main>
     </div>
     <script src="core.js"></script>
