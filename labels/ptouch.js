@@ -5,7 +5,8 @@
     const TAPE_DOTS = 128;                // print pins on 24 mm tape
     const TAPE_MM = 24;
     const FEED_DOTS = 14;                 // printer minimum margin before and after the artwork, 2 mm at 180 dpi (D-12)
-    const MAX_LINES = 7086;               // printer maximum length, 1000 mm, margins included
+    const TRAIL_DOTS = 14;                // extra blank lines after the artwork only, 2 mm at 180 dpi (owner wish after HW-1; ESC i d feeds both ends)
+    const MAX_LINES = 7086;               // printer maximum length, 1000 mm, margins and trailing lines included
     const INVALIDATE_LEN = 100;
     const STATUS_LEN = 32;
     const ADVANCED_MODE = 0x08;           // ESC i K bit 3: no chain printing, feed and cut after the label
@@ -54,10 +55,11 @@
     }
 
     // One complete single-label job. Never ESC i A (unsupported on this model) and never Z (raw lines only).
-    function buildJob(bitmap, { cut = true, feedDots = FEED_DOTS, orientation = ORIENTATION } = {}) {
+    function buildJob(bitmap, { cut = true, feedDots = FEED_DOTS, trailDots = TRAIL_DOTS, orientation = ORIENTATION } = {}) {
         if (bitmap.height !== TAPE_DOTS) throw new Error('label must be 128 dots high');
-        if (bitmap.width + 2 * feedDots > MAX_LINES) throw new Error('Label is too long to print');
+        if (bitmap.width + trailDots + 2 * feedDots > MAX_LINES) throw new Error('Label is too long to print');
         const lines = rasterLines(bitmap, orientation);
+        for (let i = 0; i < trailDots; i++) lines.push(new Uint8Array(HEAD_BYTES));   // last lines sent are the trailing end of the tape
         const n = lines.length;
         const header = Uint8Array.of(
             0x1b, 0x40,                                                   // initialize
@@ -104,18 +106,48 @@
 
     const formatRaw = (frame) => Array.from(frame, (b) => b.toString(16).padStart(2, '0')).join(' ');
 
-    // The sentence table lands in plan 02-04; the shape { ok, code, text } is final.
-    function describeStatus(status) {
-        const ok = !status.err7 && !status.err8 && !status.err9 && status.statusType !== 2 && status.statusType !== 4 && status.widthMm !== 0;
-        return ok ? { ok: true, code: 'ok', text: '' } : { ok: false, code: 'unknown', text: 'The printer reported an error.' };
+    const SENTENCES = {
+        'no-tape': 'No tape is loaded. Insert a 24 mm TZe cassette and press Print again.',
+        'incompatible-tape': 'The loaded tape is not compatible with this printer.',
+        'wrong-media': 'The loaded tape does not match this job. Check the cassette and press Print again.',
+        'cover-open': 'Cover is open. Close it and press Print again.',
+        'overheated': 'The print head is too hot. Wait a few minutes and press Print again.',
+        'cutter-jam': 'The cutter is jammed. Switch the printer off, clear the jam and try again.',
+        'low-battery': 'The battery is low. Connect the USB cable or charge the printer, then print again.',
+        'bad-adapter': 'The power adapter does not suit this printer. Use the adapter that came with it.',
+        'powered-off': 'The printer switched itself off. Switch it on and connect again.',
+        'busy': 'The printer is busy printing. Wait for it to finish, then press Refresh.',
+        'unknown': 'The printer reported an unknown error.'
+    };
+    // [byte, bit, code] in order of precedence: error info 1, then error info 2
+    const ERROR_BITS = [['err8', 0x01, 'no-tape'], ['err8', 0x04, 'cutter-jam'], ['err8', 0x08, 'low-battery'], ['err8', 0x40, 'bad-adapter'],
+        ['err9', 0x01, 'wrong-media'], ['err9', 0x10, 'cover-open'], ['err9', 0x20, 'overheated']];
+    const KNOWN_BITS = { err8: 0x4d, err9: 0x31 };
+
+    // Total over any parsed status. duringJob skips the busy and tape rules: the phase change and completion frames of a normal job are not errors.
+    function describeStatus(status, { duringJob = false } = {}) {
+        const verdict = (code, text = SENTENCES[code]) => ({ ok: false, code, text });
+        for (const [byte, bit, code] of ERROR_BITS) if (status[byte] & bit) return verdict(code);
+        if ((status.err8 & ~KNOWN_BITS.err8) || (status.err9 & ~KNOWN_BITS.err9) || status.err7) {
+            const first = status.err7 || status.err8 || status.err9;   // mapped bits returned above, so a non-zero err8 or err9 is unmapped here
+            return verdict('unknown', `The printer reported an unknown error (code 0x${first.toString(16).padStart(2, '0')}).`);
+        }
+        if (status.phaseNumber === 0x0014 || status.notification === 1) return verdict('cover-open');
+        if (status.statusType === 4) return verdict('powered-off');
+        if (status.statusType === 2) return verdict('unknown');
+        if (duringJob) return { ok: true, code: 'ok', text: '' };
+        if ((status.statusType === 5 || status.statusType === 6) && status.phaseType === 1) return verdict('busy');
+        if (status.mediaType === 0xff) return verdict('incompatible-tape');
+        if (status.widthMm === 0 || status.mediaType === 0) return verdict('no-tape');
+        return { ok: true, code: 'ok', text: '' };
     }
 
     const tapeMismatchText = (status, wantMm = TAPE_MM) =>
         `The printer has ${status.widthMm} mm tape loaded, but this label is made for ${wantMm} mm tape.`;
 
     const api = {
-        HEAD_BYTES, TAPE_DOTS, TAPE_MM, FEED_DOTS, MAX_LINES, INVALIDATE_LEN, STATUS_LEN, ADVANCED_MODE, ADVANCED_MODE_CUT_OFF, ORIENTATION,
-        invalidate, init, statusRequest, rasterLines, buildJob, takeFrame, parseStatus, formatRaw, describeStatus, tapeMismatchText, concat
+        HEAD_BYTES, TAPE_DOTS, TAPE_MM, FEED_DOTS, TRAIL_DOTS, MAX_LINES, INVALIDATE_LEN, STATUS_LEN, ADVANCED_MODE, ADVANCED_MODE_CUT_OFF, ORIENTATION,
+        invalidate, init, statusRequest, rasterLines, buildJob, takeFrame, parseStatus, formatRaw, describeStatus, tapeMismatchText, concat, SENTENCES
     };
     if (typeof module !== 'undefined' && module.exports) module.exports = api;
     else root.PTouch = api;
