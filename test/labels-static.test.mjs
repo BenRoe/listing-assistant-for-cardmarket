@@ -199,3 +199,42 @@ test('[EXP-02/concurrency] the stale-render guard and the ZIP re-entrancy flag a
     assert.match(text, /if \(state\.building\) return/);
     assert.match(text, /finally \{\s*state\.building = false/);
 });
+
+const printFiles = ['ptouch.js', 'printer.js', 'transport.js', 'print-ui.js'];
+
+test('[PRNT-02] labels.html loads the scripts in dependency order', () => {
+    const html = read('labels/labels.html').toString('utf8');
+    const srcs = [...html.matchAll(/<script\b[^>]*\bsrc="([^"]+)"/gi)].map((m) => m[1]);
+    assert.deepEqual(srcs, ['core.js', 'keyrune-map.js', 'csv-sets.js', 'ptouch.js', 'printer.js', 'transport.js', 'print-ui.js', 'labels.js']);
+});
+
+test('[PRNT-02/network] the print files use no network API and no localStorage', () => {
+    for (const f of printFiles) {
+        const text = read(`labels/${f}`).toString('utf8');
+        for (const re of [/\bfetch\(/, /XMLHttpRequest/, /sendBeacon/, /WebSocket/, /EventSource/, /new\s+Image\b/, /\blocalStorage\b/]) {
+            assert.doesNotMatch(text, re, `${f} matches ${re}`);
+        }
+    }
+});
+
+test('[T-02-01] requestDevice( and requestPort( exist only in transport.js', () => {
+    for (const f of labelFiles('.js')) {
+        const text = read(`labels/${f}`).toString('utf8');
+        const device = (text.match(/requestDevice\(/g) ?? []).length;
+        const port = (text.match(/requestPort\(/g) ?? []).length;
+        if (f === 'transport.js') {
+            assert.equal(device, 1, 'requestDevice( count in transport.js');
+            assert.ok(port <= 1, 'requestPort( count in transport.js');
+        } else {
+            assert.equal(device + port, 0, `${f} requests a device`);
+        }
+    }
+});
+
+test('[D-06 amendment] nothing is awaited between the Connect USB handler and UsbTransport.request(', () => {
+    const text = read('labels/print-ui.js').toString('utf8');
+    const start = text.indexOf("$('connectUsb')");
+    const end = text.indexOf('UsbTransport.request(');
+    assert.ok(start >= 0 && end > start, 'connectUsb handler and request call found in order');
+    assert.doesNotMatch(text.slice(start, end), /\bawait\b/);
+});

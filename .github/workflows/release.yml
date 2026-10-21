@@ -21,7 +21,7 @@ jobs:
           [ "$v" = "${GITHUB_REF_NAME}" ] || { echo "manifest.json is $v, tag is ${GITHUB_REF_NAME}"; exit 1; }
 
       - name: Unit tests
-        run: node --test test/shared.test.mjs test/labels.test.mjs test/labels-static.test.mjs
+        run: node --test test/shared.test.mjs test/labels.test.mjs test/labels-static.test.mjs test/ptouch.test.mjs test/transport.test.mjs
 
       - name: Release notes from the commits since the previous tag
         uses: orhun/git-cliff-action@v4
