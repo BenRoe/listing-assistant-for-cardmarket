@@ -233,7 +233,7 @@ test('[T-02-01] requestDevice( and requestPort( exist only in transport.js', () 
 
 test('[D-06 amendment] nothing is awaited between the Connect USB handler and UsbTransport.request(', () => {
     const text = read('labels/print-ui.js').toString('utf8');
-    const start = text.indexOf("$('connectUsb')");
+    const start = text.indexOf("$('connectUsb').addEventListener");
     const end = text.indexOf('UsbTransport.request(');
     assert.ok(start >= 0 && end > start, 'connectUsb handler and request call found in order');
     assert.doesNotMatch(text.slice(start, end), /\bawait\b/);

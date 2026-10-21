@@ -469,6 +469,9 @@
         return out;
     }
 
+    // copies per label (direct print): an integer clamped to 1..99, anything else is 1
+    const normalizeCopies = (value) => (Number.isInteger(value) ? clamp(value, 1, 99) : 1);
+
     // stored page settings: anything unexpected falls back to the default
     function normalizeSettings(raw) {
         const o = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
@@ -480,7 +483,10 @@
             code: bool(o.code, true),
             maxMm: length(o.maxMm),
             foil: bool(o.foil, false),
-            cond: normalizeCondition(o.cond)
+            cond: normalizeCondition(o.cond),
+            cut: bool(o.cut, true),
+            copies: normalizeCopies(o.copies),
+            transport: o.transport === 'usb' ? 'usb' : null   // Bluetooth is deferred (D-17), so 'serial' is not accepted yet
         };
     }
 
@@ -489,7 +495,7 @@
         TAPE_DOTS, DPI, MIN_DOTS, PAD_X, PAD_Y, ICON_GAP, CONDITIONS, MAX_DOTS, DEFAULT_MAX_MM,
         crc32, adler32, toBitmap, encodePng1bit, glyphFor, parseFragment, layoutLabel,
         mmToDots, normalizeCondition, fold, fileName, uniqueNames, captionFor, bitmapToRgba,
-        HIDDEN_SET_TYPES, zipStore, filterSets, sortSets, searchSets, groupCsvSets, resolveSet, trimSets, normalizeSettings
+        HIDDEN_SET_TYPES, zipStore, filterSets, sortSets, searchSets, groupCsvSets, resolveSet, trimSets, normalizeSettings, normalizeCopies
     };
     if (typeof module !== 'undefined' && module.exports) module.exports = api;
     else root.LabelCore = api;

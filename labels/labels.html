@@ -30,9 +30,13 @@
         .set-note { padding: 8px; color: GrayText; }
         .toolbar { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; margin-bottom: 16px; }
         .toolbar input[type=number] { width: 6ch; }
-        #printerStatus { min-height: 1.2em; margin: -8px 0 16px; font-size: 12px; }
+        #printerBar { margin-bottom: 8px; }
+        #printerStatus { min-height: 1.2em; margin: 0 0 4px; font-size: 12px; }
+        .raw { min-height: 1.2em; margin: 0 0 16px; font: 11px ui-monospace, monospace; color: GrayText; overflow-wrap: anywhere; }
+        .reason { color: GrayText; font-size: 12px; }
         .card-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
         .print-state { font-size: 12px; }
+        input.copies { width: 5ch; }
         #empty { color: GrayText; }
         .card { border: 1px solid GrayText; border-radius: 6px; padding: 12px; margin: 0 0 16px; }
         .card-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
@@ -70,9 +74,16 @@
                 <label><input id="optCode" type="checkbox"> Show code</label>
                 <label title="Long names break into two lines and shrink to stay within this length">Max label length (mm) <input id="maxMm" type="number" min="25" max="1000" step="1" placeholder="100"></label>
                 <button id="downloadAll" type="button" disabled>Download all (ZIP)</button>
+            </div>
+            <div class="toolbar" id="printerBar">
                 <button id="connectUsb" type="button">Connect USB</button>
+                <span id="usbReason" class="reason"></span>
+                <button id="refresh" type="button" disabled>Refresh</button>
+                <label><input id="optCut" type="checkbox"> Cut after each label</label>
+                <button id="printAll" type="button" disabled>Print all</button>
             </div>
             <p id="printerStatus" role="status"></p>
+            <p id="printerRaw" class="raw"></p>
             <p id="empty">No sets ticked. Tick a set on the left to make a label.</p>
             <div id="cards"></div>
             <section class="tips">

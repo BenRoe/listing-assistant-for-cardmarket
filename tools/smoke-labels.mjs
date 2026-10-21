@@ -412,15 +412,15 @@ const scenarios = [
     }],
     ['usb-print', async (page, base, expect) => {
         await addPrinterStub(page, installUsbStub);
-        const sent = await printAndCompare(page, base, expect, '#connectUsb', 'USB printer connected. 24 mm tape loaded.');
+        const sent = await printAndCompare(page, base, expect, '#connectUsb', 'USB printer ready. 24 mm tape loaded.');
         expect(sent.actual.length === sent.expected.length && sent.actual.every((b, i) => b === sent.expected[i]), `job bytes differ (${sent.actual.length} sent, ${sent.expected.length} expected)`);
         expect(sent.requests >= 2, `status requests ${sent.requests}`);
 
         // a 12 mm cassette: Print fails before any job byte
         await page.evaluate(() => { window.__printer.widthMm = 12; window.__printer.mark = window.__printer.writes.length; });
         await page.click('button[data-action="print"]');
-        await page.waitForFunction(() => document.querySelector('.print-state').textContent.startsWith('Failed'));
-        const text = await page.textContent('.print-state');
+        await page.waitForFunction(() => document.querySelector('.print-state').textContent === 'Failed');
+        const text = await page.textContent('#printerStatus');
         expect(text.includes('12 mm') && text.includes('24 mm'), `mismatch text ${text}`);
         const rasterWritten = await page.evaluate(() => {
             const bytes = window.__printer.writes.slice(window.__printer.mark).flat();

@@ -225,6 +225,7 @@ function buildCard(rec) {
         rec.cond = LabelCore.normalizeCondition(cond.value);
         state.settings = { ...state.settings, foil: rec.foil, cond: rec.cond };
         saveSettings();
+        PrintUI.cardChanged(rec);   // the label changed, so earlier prints of this card no longer count
         renderCard(rec).catch((e) => showError(rec, e));
     };
     foil.addEventListener('change', changed);
@@ -282,7 +283,7 @@ function updateChrome() {
 function toggleSet(code, on) {
     if (on === state.ticked.has(code)) return;
     if (on) {
-        const rec = { code, foil: state.settings.foil, cond: state.settings.cond, seq: 0, result: null, el: null };
+        const rec = { code, foil: state.settings.foil, cond: state.settings.cond, copies: state.settings.copies, printed: 0, seq: 0, result: null, el: null };
         rec.el = buildCard(rec);
         state.ticked.set(code, rec);
         $('cards').append(rec.el);
@@ -353,6 +354,7 @@ function applySettingsToControls() {
     $('optName').checked = s.name;
     $('optCode').checked = s.code;
     $('maxMm').value = s.maxMm === null ? '' : String(s.maxMm);
+    $('optCut').checked = s.cut;
 }
 
 function readControls(writeBack) {
@@ -372,7 +374,16 @@ function readControls(writeBack) {
 (function init() {
     loadSettings();
     applySettingsToControls();
-    PrintUI.init({ $, renderFresh });
+    PrintUI.init({
+        $, renderFresh,
+        records: () => [...$('cards').children].map((el) => state.ticked.get(el.dataset.code)),   // ticked cards in card order
+        settings: () => state.settings,
+        updateSettings: (patch) => {
+            state.settings = LabelCore.normalizeSettings({ ...state.settings, ...patch });
+            saveSettings();
+            return state.settings;
+        }
+    });
     for (const id of ['optIcon', 'optName', 'optCode']) $(id).addEventListener('change', () => readControls(false));
     $('maxMm').addEventListener('input', () => readControls(false));
     $('maxMm').addEventListener('change', () => readControls(true));

@@ -13,7 +13,7 @@ const KEYRUNE = require('../labels/keyrune-map.js');
 const {
     crc32, adler32, toBitmap, encodePng1bit, glyphFor, parseFragment, layoutLabel, MIN_DOTS, PAD_X, PAD_Y, ICON_GAP,
     normalizeCondition, fold, mmToDots, fileName, uniqueNames, captionFor, bitmapToRgba,
-    zipStore, filterSets, sortSets, searchSets, groupCsvSets, resolveSet, trimSets, normalizeSettings, HIDDEN_SET_TYPES
+    zipStore, filterSets, sortSets, searchSets, groupCsvSets, resolveSet, trimSets, normalizeSettings, normalizeCopies, HIDDEN_SET_TYPES
 } = core;
 
 // Walks the chunks (asserting every CRC), inflates IDAT and returns ink bits (1 = ink) next to the raw samples
@@ -650,16 +650,33 @@ test('trimSets: keeps five validated fields, drops malformed entries, throws on 
 });
 
 test('normalizeSettings: defaults, real booleans only, clamped length, whitelisted condition', () => {
-    const defaults = { icon: true, name: true, code: true, maxMm: null, foil: false, cond: 'none' };
+    const defaults = { icon: true, name: true, code: true, maxMm: null, foil: false, cond: 'none', cut: true, copies: 1, transport: null };
     for (const raw of [undefined, null, 'x', 5, [], true]) assert.deepEqual(normalizeSettings(raw), defaults, String(raw));
     assert.deepEqual(normalizeSettings({ icon: false, name: 'no', code: 0, foil: 1, cond: 'nm', maxMm: 60, evil: '<script>', __proto__: { x: 1 } }),
-        { icon: false, name: true, code: true, maxMm: 60, foil: false, cond: 'NM' });
+        { icon: false, name: true, code: true, maxMm: 60, foil: false, cond: 'NM', cut: true, copies: 1, transport: null });
     assert.equal(normalizeSettings({ maxMm: 150 }).maxMm, 150);
     assert.equal(normalizeSettings({ maxMm: 5 }).maxMm, 24.5);
     for (const bad of [0, -4, NaN, '100', null]) assert.equal(normalizeSettings({ maxMm: bad }).maxMm, null, String(bad));
     assert.equal(normalizeSettings({ maxMm: 5000 }).maxMm, 1000);
     assert.equal(normalizeSettings({ fixedMm: 60 }).fixedMm, undefined, 'the fixed length setting is gone');
     assert.equal(normalizeSettings({ foil: true }).foil, true);
+});
+
+test('[D-14] normalizeCopies keeps integers 1 to 99 and rejects everything else', () => {
+    for (const [input, expected] of [[0, 1], [1, 1], [-3, 1], [99, 99], [150, 99], [2.5, 1], ['3', 1], [NaN, 1], [Infinity, 1], [null, 1], [undefined, 1], [{}, 1], [7, 7]]) {
+        assert.equal(normalizeCopies(input), expected, String(input));
+    }
+});
+
+test('[D-13/D-14] normalizeSettings: cut is a real boolean, copies an integer 1 to 99, transport usb or null', () => {
+    assert.equal(normalizeSettings({ cut: false }).cut, false);
+    for (const bad of ['no', 0, null, undefined, 'false']) assert.equal(normalizeSettings({ cut: bad }).cut, true, String(bad));
+    assert.equal(normalizeSettings({ copies: 3 }).copies, 3);
+    assert.equal(normalizeSettings({ copies: 150 }).copies, 99);
+    for (const bad of [2.5, '3', NaN, null]) assert.equal(normalizeSettings({ copies: bad }).copies, 1, String(bad));
+    assert.equal(normalizeSettings({ transport: 'usb' }).transport, 'usb');
+    for (const other of ['serial', 'bluetooth', '', 5, null, {}]) assert.equal(normalizeSettings({ transport: other }).transport, null, String(other));
+    assert.deepEqual(Object.keys(normalizeSettings(null)), ['icon', 'name', 'code', 'maxMm', 'foil', 'cond', 'cut', 'copies', 'transport'], 'no other key can be stored');
 });
 
 test('layoutLabel: with a max length set the name shrinks until it fits, down to 16 px', () => {
