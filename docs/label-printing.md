@@ -32,12 +32,15 @@ Direct print from the browser (phase 2):
 - **Where the permission prompt lives.** `requestDevice()` / `requestPort()` need a user gesture and cannot run in the MV3 service worker or in a content script (it would bind the permission to cardmarket.com). Run them in an extension page, hence `labels/labels.html`.
 - **Linux USB gotcha.** The kernel `usblp` driver claims the printer and Chromium cannot take it over. Start the browser with `--enable-features=AutomaticUsbDetach`, or blacklist `usblp` and add a udev rule for vendor `04f9`. Bluetooth avoids this. On macOS this does not apply.
 
-## Existing code to reuse (do not write the protocol from scratch)
+## Protocol sources and cross-checks
 
-- [dtinth/p-touch-webusb](https://github.com/dtinth/p-touch-webusb), `brother-pt.js`: 434 lines of JS, Apache-2.0, tested on a PT-P710BT with 18 mm tape. WebUSB only. Phase 2 swaps its `write()`/`read()` for a Web Serial transport. It sends raw (uncompressed) lines, which is enough.
-- [fjanicki/ptouch](https://github.com/fjanicki/ptouch): Rust/WASM library plus web studio (https://fjanicki.github.io/ptouch/), Apache-2.0/MIT, hardware-tested on the PT-P710BT over USB and Bluetooth. Its `docs/PROTOCOL.md` is the best protocol write-up found. Too big to embed; useful as a reference and as a fallback tool that imports the exported PNG.
-- [jantman/pt-p710bt-label-maker](https://github.com/jantman/pt-p710bt-label-maker), [treideme/brother_pt](https://github.com/treideme/brother_pt): Python references.
-- Brother, [Raster Command Reference PT-E550W/P750W/P710BT](https://download.brother.com/welcome/docp100064/cv_pte550wp750wp710bt_eng_raster_102.pdf).
+- Brother, [Raster Command Reference PT-E550W/P750W/P710BT](https://download.brother.com/welcome/docp100064/cv_pte550wp750wp710bt_eng_raster_102.pdf): the source of truth. Its terms forbid redistribution, so the PDF is linked and never committed.
+- [treideme/brother_pt](https://github.com/treideme/brother_pt) (Apache-2.0, Python, 34 stars): golden-byte cross-check.
+- [jantman/pt-p710bt-label-maker](https://github.com/jantman/pt-p710bt-label-maker) (CC-BY-4.0, credited here as required, Python, hardware-tested): second cross-check.
+- [fjanicki/ptouch](https://github.com/fjanicki/ptouch) (Apache-2.0 or MIT; `docs/PROTOCOL.md` for the status-reply fields): hardware-tested on the PT-P710BT over USB and Bluetooth, very new as of 2026-10. Rust/WASM library plus web studio (https://fjanicki.github.io/ptouch/), useful as a fallback tool that imports the exported PNG.
+- [dtinth/p-touch-webusb](https://github.com/dtinth/p-touch-webusb) (Apache-2.0): rejected as a code base (3 stars, 5 commits, one day of work, not well tested). Kept only as a third opinion that raw uncompressed lines print on a PT-P710BT.
+
+The plugin encoder is written from the Brother reference. Nothing is copied or vendored, so no Apache NOTICE file is needed.
 
 ## Print geometry (180 dpi, 128-pin head)
 
