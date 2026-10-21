@@ -2,7 +2,22 @@
 
 [![Release](https://img.shields.io/github/v/release/BenRoe/listing-assistant-for-cardmarket)](https://github.com/BenRoe/listing-assistant-for-cardmarket/releases/latest)
 [![License: MIT](https://img.shields.io/github/license/BenRoe/listing-assistant-for-cardmarket)](LICENSE)
+[![Firefox Add-ons](https://img.shields.io/amo/v/listing-assistant-cardmarket?label=Firefox%20Add-ons&logo=firefox-browser&logoColor=white)](https://addons.mozilla.org/addon/listing-assistant-cardmarket/)
 [![Release workflow](https://img.shields.io/github/actions/workflow/status/BenRoe/listing-assistant-for-cardmarket/release.yml?label=release%20build)](https://github.com/BenRoe/listing-assistant-for-cardmarket/actions/workflows/release.yml)
+
+## Contents
+
+- [Install](#install)
+  - [Firefox](#firefox)
+  - [Chromium (Chrome, Brave, Edge)](#chromium-chrome-brave-edge)
+- [Features](#features)
+- [Edition labels](#edition-labels)
+  - [Printing](#printing)
+- [Comparison with other tools](#comparison-with-other-tools)
+- [Privacy](#privacy)
+- [Contributing](#contributing)
+- [License and disclaimer](#license-and-disclaimer)
+- [Documentation](#documentation)
 
 Browser extension (Manifest V3, plain JavaScript, Firefox and Chromium) that helps to list cards from a ManaBox CSV on Cardmarket, one card at a time.
 
@@ -17,12 +32,28 @@ Cards are identified by the Scryfall ID in the ManaBox CSV, which Scryfall maps 
 <a href="docs/manabox-csv-list.jpeg"><img src="docs/manabox-csv-list.jpeg" width="480" alt="Panel with a loaded ManaBox CSV above a Cardmarket product page with the pre-filled sell form"></a>
 <a href="docs/settings.jpeg"><img src="docs/settings.jpeg" width="330" alt="Settings page: price source, multiplier, rounding and minimum price"></a>
 
-## Install for development
+## Install
 
-- Chrome and other Chromium browsers: `chrome://extensions` (Brave: `brave://extensions`, Edge: `edge://extensions`), enable developer mode, "Load unpacked", pick this folder. Tested in Chromium only.
-- Firefox: `about:debugging`, "This Firefox", "Load Temporary Add-on", pick `manifest.json`.
+### Firefox
 
-Tests: `node --test test/shared.test.mjs test/labels.test.mjs test/labels-static.test.mjs`.
+Install it from [Firefox Add-ons](https://addons.mozilla.org/addon/listing-assistant-cardmarket/).
+
+To run it from source instead (for example to try an unreleased change), Firefox 140 or newer loads it as a temporary add-on:
+
+1. Download the source zip from the [releases page](https://github.com/BenRoe/listing-assistant-for-cardmarket/releases/latest) and unzip it into a folder, or clone this repository.
+2. Type `about:debugging` in the address bar and click "This Firefox" in the left sidebar.
+3. Click "Load Temporary Add-on...", go into the folder and pick the file `manifest.json`.
+4. Open a Cardmarket Magic page. The panel appears under the top search bar.
+
+A temporary add-on is removed when you close Firefox, so repeat steps 2 and 3 after each restart. Use the [Firefox Add-ons](https://addons.mozilla.org/addon/listing-assistant-cardmarket/) version for a permanent install. While it is loaded, "Reload" next to the add-on in `about:debugging` applies your edits to the files.
+
+### Chromium (Chrome, Brave, Edge)
+
+The extension is not published on the Chrome Web Store, because Google charges a one-time 5 USD developer registration fee. Install it by hand, it takes a minute. Tested in Chromium only.
+
+1. Download the zip from the [releases page](https://github.com/BenRoe/listing-assistant-for-cardmarket/releases/latest) and unzip it into a folder (or clone this repository).
+2. Open `chrome://extensions` (Brave: `brave://extensions`, Edge: `edge://extensions`) and turn on developer mode.
+3. Click "Load unpacked" and pick that folder.
 
 ## Features
 
@@ -41,7 +72,7 @@ Tests: `node --test test/shared.test.mjs test/labels.test.mjs test/labels-static
 - **Listed tracking per loaded CSV**, marks a card "listed" after Cardmarket's success message; manual "done" and "undo" per row.
 - **Nothing is submitted for you** and nothing leaves the browser except Scryfall IDs sent to `api.scryfall.com`.
 
-*Why Scryfall: the ManaBox CSV has no Cardmarket product ID, but every Scryfall card record includes it (`cardmarket_id`). The plugin sends only the Scryfall IDs from your CSV (up to 75 per request, once per card, then cached) and reads back the product ID.*
+_Why Scryfall: the ManaBox CSV has no Cardmarket product ID, but every Scryfall card record includes it (`cardmarket_id`). The plugin sends only the Scryfall IDs from your CSV (up to 75 per request, once per card, then cached) and reads back the product ID._
 
 ## Edition labels
 
