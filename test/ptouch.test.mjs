@@ -18,13 +18,13 @@ function bitmap(width, points) {
 }
 
 const golden = bitmap(3, [[0, 0], [1, 127], [2, 8]]);
-const head = (cutByte) => [
+const head = (cutByte, modeByte = 0x08) => [
     zeros(100), [0x1b, 0x40], [0x1b, 0x69, 0x61, 0x01], [0x1b, 0x69, 0x21, 0x00],
     [0x1b, 0x69, 0x7a, 0x84, 0x00, 0x18, 0x00, 0x11, 0x00, 0x00, 0x00, 0x00, 0x00],   // 3 artwork lines + 14 trailing blank lines = 17
-    [0x1b, 0x69, 0x4d, cutByte], [0x1b, 0x69, 0x4b, 0x08], [0x1b, 0x69, 0x64, 0x0e, 0x00], [0x4d, 0x00]
+    [0x1b, 0x69, 0x4d, cutByte], [0x1b, 0x69, 0x4b, modeByte], [0x1b, 0x69, 0x64, 0x0e, 0x00], [0x4d, 0x00]
 ];
-const goldenJob = (cutByte) => bytes(
-    head(cutByte),
+const goldenJob = (cutByte, modeByte) => bytes(
+    head(cutByte, modeByte),
     [0x47, 0x10, 0x00, 0x80, ...zeros(15)],
     [0x47, 0x10, 0x00, ...zeros(15), 0x01],
     [0x47, 0x10, 0x00, 0x00, 0x80, ...zeros(14)],
@@ -33,31 +33,31 @@ const goldenJob = (cutByte) => bytes(
 );
 
 test('[D-02/D-04] buildJob of the 3 column golden bitmap is the 462 reference bytes (artwork plus 14 trailing blank lines), cut on', () => {
-    const job = P.buildJob(golden, { cut: true, orientation: T });
+    const job = P.buildJob(golden, { cut: true, orientation: T, leadDots: 0, leadDots: 0 });
     assert.equal(job.length, 462);
     assert.deepEqual(Array.from(job), Array.from(goldenJob(0x40)));
 });
 
-test('[D-02/D-04] cut off differs only in the ESC i M value', () => {
-    const on = P.buildJob(golden, { cut: true, orientation: T });
-    const off = P.buildJob(golden, { cut: false, orientation: T });
-    assert.deepEqual(Array.from(off), Array.from(goldenJob(0x00)));
+test('[D-02/D-04] cut off differs only in the ESC i M and ESC i K values', () => {
+    const on = P.buildJob(golden, { cut: true, orientation: T, leadDots: 0, leadDots: 0 });
+    const off = P.buildJob(golden, { cut: false, orientation: T, leadDots: 0, leadDots: 0 });
+    assert.deepEqual(Array.from(off), Array.from(goldenJob(0x00, 0x18)));
     const diff = Array.from(on).flatMap((b, i) => (b === off[i] ? [] : [i]));
-    assert.deepEqual(diff, [126]);
+    assert.deepEqual(diff, [126, 130]);
 });
 
 test('[D-12] the default margin is 14 dots (2 mm) and the printed length is lines plus 2 x FEED_DOTS (plus the trailing lines)', () => {
     assert.equal(P.FEED_DOTS, 14);
-    const job = P.buildJob(golden, { orientation: T });
+    const job = P.buildJob(golden, { orientation: T, leadDots: 0, leadDots: 0 });
     assert.deepEqual(Array.from(job.subarray(131, 136)), [0x1b, 0x69, 0x64, 14, 0]);
-    const wide = Array.from(P.buildJob(golden, { orientation: T, feedDots: 300 }).subarray(131, 136));
+    const wide = Array.from(P.buildJob(golden, { orientation: T, leadDots: 0, feedDots: 300 }).subarray(131, 136));
     assert.deepEqual(wide, [0x1b, 0x69, 0x64, 0x2c, 0x01]);
 });
 
 test('[owner wish after HW-1] 14 blank lines follow the artwork and no line precedes it; the margin stays symmetric', () => {
     assert.equal(P.TRAIL_DOTS, 14);
     const lines = P.rasterLines(golden, T);
-    const job = P.buildJob(golden, { orientation: T });
+    const job = P.buildJob(golden, { orientation: T, leadDots: 0, leadDots: 0 });
     assert.equal(job.length, 139 + 19 * (lines.length + 14));
     assert.deepEqual(Array.from(job.subarray(138, 138 + 3 + 16)), [0x47, 0x10, 0x00, 0x80, ...zeros(15)], 'the first line sent is still artwork column 0');
     const tail = job.subarray(138 + 3 * 19, job.length - 1);
@@ -65,7 +65,7 @@ test('[owner wish after HW-1] 14 blank lines follow the artwork and no line prec
     for (let i = 0; i < 14; i++) assert.deepEqual(Array.from(tail.subarray(i * 19, i * 19 + 19)), [0x47, 0x10, 0x00, ...zeros(16)], `trailing line ${i}`);
     assert.equal(job[job.length - 1], 0x1a);
     assert.deepEqual(Array.from(job.subarray(131, 136)), [0x1b, 0x69, 0x64, 14, 0], 'ESC i d is unchanged');
-    const none = P.buildJob(golden, { orientation: T, trailDots: 0 });
+    const none = P.buildJob(golden, { orientation: T, leadDots: 0, trailDots: 0 });
     assert.equal(none.length, 196);
     assert.deepEqual(Array.from(none.subarray(117, 121)), [3, 0, 0, 0]);
 });
@@ -112,7 +112,7 @@ test('[PRNT-02/encoding] ORIENTATION flips line order and pin order independentl
 
 test('[PRNT-02/encoding] the line count (artwork plus 14 trailing lines) is a little-endian 32 bit number at offset 117', () => {
     for (const [width, le] of [[3, [17, 0, 0, 0]], [174, [188, 0, 0, 0]], [7044, [0x92, 0x1b, 0, 0]]]) {
-        const job = P.buildJob(bitmap(width, []), { orientation: T });
+        const job = P.buildJob(bitmap(width, []), { orientation: T, leadDots: 0, leadDots: 0 });
         assert.deepEqual(Array.from(job.subarray(117, 121)), le, `width ${width}`);
         assert.equal(job.length, 139 + 19 * (width + 14));
     }
@@ -124,9 +124,9 @@ test('[PRNT-02/empty] a bitmap that is not 128 dots high throws before any byte 
     assert.throws(() => P.rasterLines(short), /label must be 128 dots high/);
 });
 
-test('[PRNT-02/empty] width + 14 trailing + 2 x FEED_DOTS above 7086 throws, 7044 does not', () => {
-    assert.throws(() => P.buildJob(bitmap(7045, [])), /Label is too long to print/);
-    assert.doesNotThrow(() => P.buildJob(bitmap(7044, [])));
+test('[PRNT-02/empty] width + 10 lead + 14 trailing + 2 x FEED_DOTS above 7086 throws, 7034 does not', () => {
+    assert.throws(() => P.buildJob(bitmap(7035, [])), /Label is too long to print/);
+    assert.doesNotThrow(() => P.buildJob(bitmap(7034, [])));
 });
 
 const fixture = () => bytes([0x80, 0x20, 0x42, 0x30, 0x76, 0x30, 0, 0, 0, 0, 0x18, 0x01], zeros(12), [0x01, 0x08], zeros(6));

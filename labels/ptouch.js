@@ -6,11 +6,12 @@
     const TAPE_MM = 24;
     const FEED_DOTS = 14;                 // printer minimum margin before and after the artwork, 2 mm at 180 dpi (D-12)
     const TRAIL_DOTS = 14;                // extra blank lines after the artwork only, 2 mm at 180 dpi (owner wish after HW-1; ESC i d feeds both ends)
+    const LEAD_DOTS = 10;                 // extra blank lines before the artwork only, about 1.4 mm; brings the measured start margin from 4-5 mm to 6 mm (HW-9)
     const MAX_LINES = 7086;               // printer maximum length, 1000 mm, margins and trailing lines included
     const INVALIDATE_LEN = 100;
     const STATUS_LEN = 32;
     const ADVANCED_MODE = 0x08;           // ESC i K bit 3: no chain printing, feed and cut after the label
-    const ADVANCED_MODE_CUT_OFF = 0x08;   // the one value to change to 0x18 if hardware check HW-6 shows the printer still cuts
+    const ADVANCED_MODE_CUT_OFF = 0x18;   // bit 4 no cut; 0x08 alone still cut at the end of each label (HW-6)
     // Convention T: line x is canvas column x, canvas row 0 is the MSB of byte 0. A wrong first print is fixed by flipping a flag here (HW-1).
     const ORIENTATION = { reverseLines: false, reversePins: false };
 
@@ -55,10 +56,11 @@
     }
 
     // One complete single-label job. Never ESC i A (unsupported on this model) and never Z (raw lines only).
-    function buildJob(bitmap, { cut = true, feedDots = FEED_DOTS, trailDots = TRAIL_DOTS, orientation = ORIENTATION } = {}) {
+    function buildJob(bitmap, { cut = true, feedDots = FEED_DOTS, leadDots = LEAD_DOTS, trailDots = TRAIL_DOTS, orientation = ORIENTATION } = {}) {
         if (bitmap.height !== TAPE_DOTS) throw new Error('label must be 128 dots high');
-        if (bitmap.width + trailDots + 2 * feedDots > MAX_LINES) throw new Error('Label is too long to print');
+        if (bitmap.width + leadDots + trailDots + 2 * feedDots > MAX_LINES) throw new Error('Label is too long to print');
         const lines = rasterLines(bitmap, orientation);
+        for (let i = 0; i < leadDots; i++) lines.unshift(new Uint8Array(HEAD_BYTES));   // first lines sent are the leading end of the tape
         for (let i = 0; i < trailDots; i++) lines.push(new Uint8Array(HEAD_BYTES));   // last lines sent are the trailing end of the tape
         const n = lines.length;
         const header = Uint8Array.of(
@@ -146,7 +148,7 @@
         `The printer has ${status.widthMm} mm tape loaded, but this label is made for ${wantMm} mm tape.`;
 
     const api = {
-        HEAD_BYTES, TAPE_DOTS, TAPE_MM, FEED_DOTS, TRAIL_DOTS, MAX_LINES, INVALIDATE_LEN, STATUS_LEN, ADVANCED_MODE, ADVANCED_MODE_CUT_OFF, ORIENTATION,
+        HEAD_BYTES, TAPE_DOTS, TAPE_MM, FEED_DOTS, TRAIL_DOTS, LEAD_DOTS, MAX_LINES, INVALIDATE_LEN, STATUS_LEN, ADVANCED_MODE, ADVANCED_MODE_CUT_OFF, ORIENTATION,
         invalidate, init, statusRequest, rasterLines, buildJob, takeFrame, parseStatus, formatRaw, describeStatus, tapeMismatchText, concat, SENTENCES
     };
     if (typeof module !== 'undefined' && module.exports) module.exports = api;
