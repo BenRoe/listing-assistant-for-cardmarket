@@ -2,13 +2,18 @@
 
 ## Unit tests
 
-`node --test test/shared.test.mjs test/labels.test.mjs test/labels-static.test.mjs` (Node 24, no dependencies). Covers:
+`node --test test/shared.test.mjs test/labels.test.mjs test/labels-static.test.mjs test/ptouch.test.mjs test/printer.test.mjs test/transport.test.mjs` (Node 24, no dependencies). Covers:
 
 - `test/shared.test.mjs`: `js/shared.js`, CSV row building for list and collection exports (binders, unique row keys), price parsing/formatting, price panel order, price computation (source, foil rule, multiplier, minimum, none).
 - `test/labels.test.mjs`: `labels/core.js`, label layout, 1-bit bitmap and PNG encoding, ZIP, set filter/sort/search, validators.
 - `test/labels-static.test.mjs`: static checks of `labels/` (no extension API except the single storage read, one allowed request, font files and licences present).
+- `test/ptouch.test.mjs`: golden bytes, framing, chain pages, status sentences.
+- `test/printer.test.mjs`: print flow against a fake transport.
+- `test/transport.test.mjs`: queue, USB and serial transports against fakes.
 
-Smoke test of the label page: `PLAYWRIGHT_CORE=<path to playwright-core> node tools/smoke-labels.mjs` (headless Chromium over HTTP, needs the Playwright browser build; not run in CI).
+Smoke test of the label page: `PLAYWRIGHT_CORE=<path to playwright-core> node tools/smoke-labels.mjs` (headless Chromium over HTTP, needs the Playwright browser build; not run in CI). Print scenarios with stubbed devices: `usb-print`, `print-errors`, `print-batch`, `print-cut`, `print-lost`, `print-support`, `print-reconnect`. They were not re-run after the cut-off and chain changes of 2026-10-21.
+
+Hardware results of direct print (2026-10-21): [docs/label-printing.md](../docs/label-printing.md).
 
 Status 2026-10-16: 5/5 passing (`shared.test.mjs`). Smoke test of the label page: passed 2026-10-20 (plan 01-04, picker, designer, csv and offline scenarios).
 
@@ -33,6 +38,7 @@ Setup in [playwright-setup.md](playwright-setup.md). Results after the Search-fl
 - Firefox (temporary add-on via `about:debugging`).
 - Rows without `cardmarket_id`, signed/altered flags, etched foil, products that offer only some languages, zero matching offers.
 - Failed submissions.
+- Direct print: HW-4 error sentences with a 12 mm cassette, no cassette and open cover (not run); 6 mm start margin with cut on after `LEAD_DOTS`; Bluetooth (deferred).
 - Edition labels: Firefox 140+ (canvas, download), and the unrecorded EXP-04 measurements listed below.
 
 ## Edition labels hardware check (EXP-04)

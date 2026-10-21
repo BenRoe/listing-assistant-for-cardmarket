@@ -82,6 +82,18 @@ The panel has an **Edition labels** button. It opens a page where you pick sets 
 
 Verified on a Brother PT-P710BT with 24 mm tape in P-touch Editor (Mac). The editor ignores the PNG's 180 dpi tag and imports it far too small. Select the image, keep **Fix Aspect Ratio** on and type **Height = 18 mm** in the Layout panel; the width follows (about 100 mm for a long label). Set **Y** to 3 mm, leave **Set Length** off and use the smallest **Margin** you accept (the same tips are shown under the label cards). "Max label length (mm)" on the page limits the width; long names then break into lines and shrink to fit.
 
+### Direct print
+
+On Brave, Chrome or Edge you can print to a Brother PT-P710BT over USB without P-touch Editor. Quit P-touch Editor and other Brother utilities first, switch the printer on, put in a 24 mm TZe cassette and press **Connect USB**; the browser asks once which device to use. On macOS no driver is needed.
+
+- **Print** per card and **Print all**; **Copies** sets how many labels of each card (direct print only). One job per label, so an error stops the run and the counters show where to resume.
+- **Cut after each label** (on by default). With it off, the labels of a batch print about 10 mm apart and the last one stays in the printer: press the printer's power button twice quickly to feed it out and cut it. A single label with cut off feeds out by itself. Laminated TZe tape cannot be torn by hand, use scissors.
+- The loaded tape must be 24 mm, otherwise the page says so. Printer conditions (no tape, cover open, printer busy or off) are shown as sentences with a grey line of raw bytes you can paste into a bug report.
+- Margins: about 6 mm of blank tape at each end with cut on. With cut off the first label starts after about 25 mm of tape (the distance from print head to cutter).
+- Bluetooth is not offered: it did not work on macOS (`SDP query timeout`). See [docs/label-printing.md](docs/label-printing.md).
+- Firefox has no WebUSB, so **Connect USB** is disabled there with a reason; PNG and ZIP export work. Results per browser: [docs/label-printing.md](docs/label-printing.md).
+- No extra extension permission is used; the browser asks per device.
+
 ## Comparison with other tools
 
 |                   | This plugin                                                                                                      | [cardmarket-bulk-import](https://github.com/PedroPerpetua/cardmarket-bulk-import) | [cardmarket-helper](https://github.com/SuppenNudel/cardmarket-helper)                                                                | [MtgCsvHelper](https://github.com/StepKie/MtgCsvHelper) |
@@ -117,7 +129,7 @@ Notes:
 - **Bug reports:** open a GitHub issue with the title prefix `[Bug]`, for example `[Bug] Price not filled for foil cards`.
 - **Questions:** open a GitHub issue with the title prefix `[QA]`.
 - **Feature requests:** open a GitHub issue with the title prefix `[Feature]`, for example `[Feature] Remember the last used binder`.
-- **Fixes:** pull requests that fix a bug are welcome. Run `node --test test/shared.test.mjs test/labels.test.mjs test/labels-static.test.mjs` before you open one.
+- **Fixes:** pull requests that fix a bug are welcome. Run `node --test test/shared.test.mjs test/labels.test.mjs test/labels-static.test.mjs test/ptouch.test.mjs test/printer.test.mjs test/transport.test.mjs` before you open one.
 - **New features:** please discuss them in a `[Feature]` issue first. A pull request for a feature that was not agreed in an issue may be closed.
 
 ## License and disclaimer
