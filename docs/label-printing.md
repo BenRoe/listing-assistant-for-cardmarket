@@ -1,6 +1,6 @@
 # Edition labels for storage boxes (Brother PT-P710BT)
 
-Research and decisions for a new feature: print or export storage-box labels with the MTG edition icon, the edition name and optional extras. Research date: 2026-10-20. Nothing here is built or tested on a printer yet.
+Research and decisions for a new feature: print or export storage-box labels with the MTG edition icon, the edition name and optional extras. Research date: 2026-10-20. Printing over USB is built and hardware-tested on a PT-P710BT (see the results below); Bluetooth is deferred.
 
 ## Goal
 
@@ -131,10 +131,46 @@ Tested on a PT-P710BT over USB, 24 mm laminated TZe, Brave on macOS. Constants a
 - A lone label with cut off does not chain and feeds out by itself.
 - Cut on never chains.
 
+## Direct print: hardware and browser results
+
+Date 2026-10-21. Setup for every row unless noted: macOS 26.6.1, Brave 1.97.59, PT-P710BT over USB, 24 mm laminated TZe, P-touch Editor quit. Values are the owner's, verbatim where quoted.
+
+| Check | Setup | Result | Notes |
+| --- | --- | --- | --- |
+| HW-1 first USB print | Brave, USB | ok | Not mirrored, no clipping, margin acceptable (details in 02-01-SUMMARY.md). Trailing end wished 2 mm longer, done with `TRAIL_DOTS`. |
+| HW-2 copies and batch | Brave, USB | ok | 2a: 3 copies, 3 labels, each cut separately. 2b: switching the printer off during label 1 gave "Connection lost: Failed to execute 'transferIn' on 'USBDevice': The device was disconnected. The printer may have switched itself off. 0 of 3 printed. Press Connect to reconnect." (3 is the owner's own quantity of 2 + 1, not a counting error). 2c: one click on Connect USB without chooser, Print all printed only the remaining labels, 4 labels in total, no duplicates. |
+| HW-3 Bluetooth | Brave, Web Serial | failed, deferred | `SDP query timeout`, see Key Decisions D-17 in PROJECT.md. |
+| HW-4 error sentences | - | not run | Only a 24 mm cassette was available. 12 mm cassette, no cassette and open cover are still to test. |
+| HW-5 power off | Printer idle until it switched itself off | ok | One click on Connect USB reconnects. |
+| HW-6 cut off | Cut after each label unticked | see "Cut and no-cut behaviour" | With `ESC i K 0x08` the printer still cut at the end of each label; `0x18` stopped the cut. The printer does not cut at the start of the label with cut off. |
+| HW-7 Firefox 158.0.1 (aarch64) | `about:debugging`, temporary add-on | USB disabled as designed | Reason text next to Connect USB: "USB needs a Chromium based browser". Refresh button disabled. PNG download (single and ZIP) works. |
+| HW-8 lengths | Brave, USB | ok | Shortest label (icon only) and the long Commander Legends label (250 mm limit) both printed completely. |
+| HW-9 margin | Cut on | start 4-5 mm, end 6 mm; wished 6 mm at both ends | Fixed with `LEAD_DOTS = 10` (about 1.4 mm); not re-measured. With cut off the start margin is about 25 mm (head-to-cutter tape), see below. |
+
+### Browser outcome
+
+- Brave on macOS, USB: works (single label, copies, batch, resume, reconnect, power-off recovery).
+- Brave on macOS, Bluetooth: does not work (0 of 1 opens), deferred.
+- Firefox 158.0.1: no direct print (no WebUSB). Connect USB is disabled with a reason, PNG and ZIP export work.
+
+### Open problems
+
+- HW-4 not run (12 mm cassette, no cassette, cover open).
+- 6 mm start margin with cut on not re-measured after `LEAD_DOTS`.
+- Cut off, last label of a batch stays in the head; power button twice ejects and cuts it (documented on the page).
+- `tools/smoke-labels.mjs` was not re-run after the cut-off and chain changes (needs Playwright, not run in CI).
+
+## Hosting the label page (PRNT-06)
+
+Evidence: Brave randomises canvas readback on normal web pages but returned exact values in an extension page in the research probe; `toBitmap` thresholds at luminance 128, so pure black and white pixels are unaffected, but anti-aliased edges near the threshold can flip on a hosted page and print differently per session. A hosted page cannot read the loaded CSV from `storage.local` and keeps only the `#sets=` fragment. Firefox has no WebUSB on any origin.
+
+Recommendation: do not host in this phase.
+
+Owner decision (D-16): "github page not in this phase. move to later".
+
 ## Open points
 
-- Firefox: Web Serial inside a `moz-extension://` page is unverified, WebUSB does not exist. Firefox keeps PNG export only until tested.
-- Brave: Web Serial and WebUSB availability in Brave must be checked on the host (Brave can disable them). Phase 1 does not depend on it.
+- Firefox and Brave results: see "Direct print: hardware and browser results".
 - The `/dev/usb/lp0` route and the raw `.prn` export are untested.
 - A real print of the exported PNG on 24 mm tape decides whether the margins in the table above are right.
 
