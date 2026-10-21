@@ -96,6 +96,41 @@ Not planned: quantity (the user excluded it), colours (the tape is monochrome), 
 - **Option A (now):** panel button "Edition labels" opens `labels/labels.html`. The page offers the sets of the loaded CSV or binder (card counts shown only as a hint in the picker, not on the label) and a search over all Scryfall sets, so it also works without a CSV.
 - **Option B (later):** a "Label" button on Cardmarket expansion or product pages. Cardmarket's DOM was not inspected. The set code would come from Scryfall `/cards/cardmarket/<idProduct>` (reverse lookup of the product id) or from the set name. The button only opens the same page with `?set=<code>`.
 
+## Cut and no-cut behaviour (hardware findings, 2026-10-21)
+
+Tested on a PT-P710BT over USB, 24 mm laminated TZe, Brave on macOS. Constants and job builder: `labels/ptouch.js`, chain handling: `labels/printer.js`, `labels/print-ui.js`.
+
+### Margins
+
+- The head sits about 25 mm before the cutter. That tape cannot be used: with cut on, the printer feeds it and trims it off before each label.
+- Cut on, `ESC i d` margin 14 dots (2 mm) plus 14 trailing blank lines: measured end 6 mm, start 4-5 mm. Target is 6 mm at both ends, so `LEAD_DOTS = 10` (about 1.4 mm) blank lines are sent before the artwork. Not yet re-measured with the lead lines.
+- Cut off, first label: the start margin is about 25 mm (the head-to-cutter tape, nothing trims it). Software cannot shrink it. Brother's own guide says the same: about 25 mm of leader before a new label.
+
+### Cut off: what the bytes do
+
+| Setting | Result |
+| --- | --- |
+| `ESC i M 0x00` (auto cut off) with `ESC i K 0x08` | Printer still cuts after each label. Auto cut off alone is not enough. |
+| `ESC i M 0x00` with `ESC i K 0x18` (bit 4, no cut) | No cut. A single label feeds out by itself. Two separate no-chain jobs leave about 33 mm between labels (25 mm feed to the cutter plus margins). |
+
+`ESC i K` bit 3 is "no chain printing": the strip is fed out after the last label. Bit 4 is "special tape, no cut".
+
+### Chain printing (cut off, batches)
+
+- Every label except the last: `ESC i K 0x10` (chain, no cut), job ends with `0x0C` (print, keep the label in the head). No feed to the cutter, so no 25 mm gap. Measured gap between two labels: 10-11 mm.
+- Later labels of a chain are continuation pages: only `ESC i z` (print info, "not first page" byte `0x01`) plus raster plus terminator. No 100-byte invalidate, no `ESC @`, no status request.
+- **A reset drops the chain.** The first attempt reset the printer (`invalidate`, `ESC @`, status request) before every job. The printer accepted the second job, reported "Printed 2 of 2", and printed nothing. The held label stayed in the head. `printer.js` therefore skips `readStatus` while `held` is set; any error clears it.
+- Status frames of a chained job look like a normal job: `type6 phase1`, `type1 phase1` (complete), `type6 phase0`. The printer does send a completion frame for `0x0C`, so no special wait is needed.
+- The last label ends with `0x1A`, preceded by `ESC i K 0x18` on its own page. It moves a little further but is not fed fully out: it stays in the head. Repeating `ESC i M`, `ESC i K` and `ESC i d` on the last page was tried and not kept. The owner accepted the result.
+- **To eject and cut the last label: press the printer's power button twice quickly.** This is Brother's documented method. It feeds the strip out and cuts it, leaving about 30 mm of tape at the end. The label page shows this note whenever "Cut after each label" is off.
+
+### Limits
+
+- A trailing record that renders empty leaves the real last label chained in the head (power button twice ejects it).
+- After an error mid-batch the printed labels stay in the head. The next Print starts a fresh job with a reset.
+- A lone label with cut off does not chain and feeds out by itself.
+- Cut on never chains.
+
 ## Open points
 
 - Firefox: Web Serial inside a `moz-extension://` page is unverified, WebUSB does not exist. Firefox keeps PNG export only until tested.
