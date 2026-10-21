@@ -238,11 +238,3 @@ test('[D-06 amendment] nothing is awaited between the Connect USB handler and Us
     assert.ok(start >= 0 && end > start, 'connectUsb handler and request call found in order');
     assert.doesNotMatch(text.slice(start, end), /\bawait\b/);
 });
-
-test('[D-06 amendment] nothing is awaited between the Connect Bluetooth handler and SerialTransport.request(', () => {
-    const text = read('labels/print-ui.js').toString('utf8');
-    const start = text.indexOf("$('connectBt')");
-    const end = text.indexOf('SerialTransport.request(');
-    assert.ok(start >= 0 && end > start, 'connectBt handler and request call found in order');
-    assert.doesNotMatch(text.slice(start, end), /\bawait\b/);
-});

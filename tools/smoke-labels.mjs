@@ -154,26 +154,6 @@ function installUsbStub() {
     Object.defineProperty(navigator, 'usb', { configurable: true, value: usb });
 }
 
-// A paired SPP port: frames reach the page in two chunks, writes go to the shared model.
-function installSerialStub() {
-    const printer = window.__printer;
-    const port = {
-        connected: true,
-        getInfo: () => ({ bluetoothServiceClassId: '00001101-0000-1000-8000-00805f9b34fb' }),
-        open: async (options) => {
-            printer.openOptions = options;
-            port.readable = new ReadableStream({
-                pull: (controller) => printer.nextFrame().then((f) => { controller.enqueue(f.slice(0, 5)); controller.enqueue(f.slice(5)); })
-            });
-            port.writable = new WritableStream({ write: (chunk) => { printer.receive(Array.from(chunk)); } });
-        },
-        close: async () => {},
-        addEventListener() {}, removeEventListener() {}
-    };
-    const serial = { requestPort: async () => port, getPorts: async () => [], addEventListener() {}, removeEventListener() {} };
-    Object.defineProperty(navigator, 'serial', { configurable: true, value: serial });
-}
-
 const addPrinterStub = (page, stub) => page.addInitScript(`(${installPrinterModel})();(${stub})();`);
 
 // Connect, print one card and compare the bytes after the last status request with a fresh in-page render
@@ -191,7 +171,7 @@ async function printAndCompare(page, base, expect, button, status) {
         const { bitmap } = await renderFresh(state.ticked.get('ons'));
         return {
             actual: writes.slice(last + 1).flat(), expected: Array.from(PTouch.buildJob(bitmap, { cut: true })),
-            requests: writes.filter(isStatusRequest).length, biggest: Math.max(...writes.map((w) => w.length)), openOptions: window.__printer.openOptions
+            requests: writes.filter(isStatusRequest).length
         };
     });
 }
@@ -448,14 +428,6 @@ const scenarios = [
         });
         expect(!rasterWritten, 'a raster line was written for the wrong tape');
         expect(!(await page.locator('button[data-action="print"]').isDisabled()), 'page is usable after a failed print');
-    }],
-    ['serial-print', async (page, base, expect) => {
-        await addPrinterStub(page, installSerialStub);
-        const sent = await printAndCompare(page, base, expect, '#connectBt', 'Bluetooth printer connected. 24 mm tape loaded.');
-        expect(sent.actual.length === sent.expected.length && sent.actual.every((b, i) => b === sent.expected[i]), `job bytes differ (${sent.actual.length} sent, ${sent.expected.length} expected)`);
-        expect(sent.requests >= 2, `status requests ${sent.requests}`);
-        expect(sent.biggest <= 512, `largest write ${sent.biggest} bytes`);
-        expect(sent.openOptions.baudRate === 9600 && sent.openOptions.flowControl === 'none', `open options ${JSON.stringify(sent.openOptions)}`);
     }],
     ['offline', async (page, base, expect, env) => {
         env.sets.mode = 'abort';

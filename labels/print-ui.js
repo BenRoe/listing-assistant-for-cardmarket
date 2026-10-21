@@ -1,4 +1,4 @@
-// Print controls of the label page: Connect USB, Connect Bluetooth, the printer status line and one Print button per card.
+// Print controls of the label page: Connect USB, the printer status line and one Print button per card.
 // Status and error text reaches the DOM through textContent only.
 const PrintUI = (function () {
     let $, renderFresh;
@@ -25,7 +25,7 @@ const PrintUI = (function () {
         if (old) await old.close();
     }
 
-    // Shared by both Connect buttons. `pending` is the transport promise made by the click handler's first statement.
+    // Shared by every Connect button (Bluetooth is deferred, see PROJECT.md). `pending` is the transport promise made by the click handler's first statement.
     async function connect(pending, label) {
         try {
             const next = await pending;
@@ -89,14 +89,6 @@ const PrintUI = (function () {
             });
         } else {
             unavailable($('connectUsb'), 'USB needs a Chromium based browser');
-        }
-        if (navigator.serial) {
-            $('connectBt').addEventListener('click', () => {
-                const pending = Transport.SerialTransport.request(navigator.serial, navigator.userAgent);
-                return connect(pending, 'Bluetooth');
-            });
-        } else {
-            unavailable($('connectBt'), 'Bluetooth needs a Chromium based browser');
         }
     }
 
