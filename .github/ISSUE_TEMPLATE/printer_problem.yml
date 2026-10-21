@@ -1,0 +1,18 @@
+name: Printer problem
+description: Direct print to a Brother printer fails or prints wrongly
+labels: [printing]
+body:
+  - type: input
+    id: setup
+    attributes:
+      label: Printer, tape, browser and system
+      placeholder: "PT-P710BT, 24 mm, Brave on macOS"
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What the printer did, and the message and grey line of numbers shown on the page.
+    validations:
+      required: true

@@ -1,0 +1,16 @@
+name: Bug report
+description: Something does not work
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What went wrong?
+      description: What did you do, what happened, what did you expect?
+    validations:
+      required: true
+  - type: input
+    id: env
+    attributes:
+      label: Browser and system
+      placeholder: "Brave on macOS"
