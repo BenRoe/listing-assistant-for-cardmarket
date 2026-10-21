@@ -224,7 +224,7 @@ test('[T-02-01] requestDevice( and requestPort( exist only in transport.js', () 
         const port = (text.match(/requestPort\(/g) ?? []).length;
         if (f === 'transport.js') {
             assert.equal(device, 1, 'requestDevice( count in transport.js');
-            assert.ok(port <= 1, 'requestPort( count in transport.js');
+            assert.equal(port, 1, 'requestPort( count in transport.js');
         } else {
             assert.equal(device + port, 0, `${f} requests a device`);
         }
@@ -236,5 +236,13 @@ test('[D-06 amendment] nothing is awaited between the Connect USB handler and Us
     const start = text.indexOf("$('connectUsb')");
     const end = text.indexOf('UsbTransport.request(');
     assert.ok(start >= 0 && end > start, 'connectUsb handler and request call found in order');
+    assert.doesNotMatch(text.slice(start, end), /\bawait\b/);
+});
+
+test('[D-06 amendment] nothing is awaited between the Connect Bluetooth handler and SerialTransport.request(', () => {
+    const text = read('labels/print-ui.js').toString('utf8');
+    const start = text.indexOf("$('connectBt')");
+    const end = text.indexOf('SerialTransport.request(');
+    assert.ok(start >= 0 && end > start, 'connectBt handler and request call found in order');
     assert.doesNotMatch(text.slice(start, end), /\bawait\b/);
 });

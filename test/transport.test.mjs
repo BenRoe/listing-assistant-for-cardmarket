@@ -272,3 +272,189 @@ test('close swallows errors from releaseInterface and close', async () => {
     await ok.open();
     await ok.close();
 });
+
+// ---- SerialTransport against a fake SerialPort built from Node streams -----------------------------
+
+const SPP = '00001101-0000-1000-8000-00805f9b34fb';
+
+function fakePort(over = {}) {
+    const port = new EventTarget();
+    port.connected = true;
+    port.calls = [];
+    port.written = [];
+    port.cancelled = 0;
+    port.getInfo = () => ({ bluetoothServiceClassId: SPP });
+    port.push = (...bytes) => port.controller.enqueue(Uint8Array.from(bytes));
+    port.open = async (options) => {
+        port.calls.push(['open', options]);
+        port.readable = new ReadableStream({
+            start: (c) => { port.controller = c; },
+            cancel: () => { port.cancelled++; }
+        });
+        port.writable = new WritableStream({ write: (chunk) => { port.written.push(Array.from(chunk)); } });
+    };
+    port.close = async () => { port.calls.push(['close']); };
+    return Object.assign(port, over);
+}
+
+function fakeSerial(ports = []) {
+    const serial = { requested: [] };
+    serial.requestPort = async (options) => { serial.requested.push(options); return ports[0]; };
+    serial.getPorts = async () => ports;
+    return serial;
+}
+
+test('serialOptions: SPP filter for Chrome like agents, undefined for Firefox', () => {
+    assert.equal(T.SERIAL_BAUD, 9600);
+    assert.equal(T.SERIAL_CHUNK, 512);
+    const chrome = T.serialOptions('Mozilla/5.0 (Macintosh) AppleWebKit/537.36 Chrome/150.0.0.0 Safari/537.36');
+    assert.deepEqual(chrome, { filters: [{ bluetoothServiceClassId: SPP }], allowedBluetoothServiceClassIds: [SPP] });
+    assert.equal(T.serialOptions('Mozilla/5.0 (Macintosh; rv:151.0) Gecko/20100101 Firefox/151.0'), undefined);
+});
+
+test('SerialTransport.request calls requestPort synchronously with the options and resolves a transport', async () => {
+    const port = fakePort();
+    const serial = fakeSerial([port]);
+    const pending = T.SerialTransport.request(serial, 'Chrome/150');
+    assert.equal(serial.requested.length, 1, 'requestPort is called synchronously');
+    assert.deepEqual(serial.requested[0], T.serialOptions('Chrome/150'));
+    assert.equal((await pending).port, port);
+});
+
+test('SerialTransport.request passes a cancelled or empty chooser through untouched', async () => {
+    const serial = fakeSerial();
+    const cancel = Object.assign(new Error('none selected'), { name: 'NotFoundError' });
+    serial.requestPort = () => Promise.reject(cancel);
+    assert.equal(await rejection(T.SerialTransport.request(serial, 'Chrome/150')), cancel);
+});
+
+test('SerialTransport.granted: null for no port, not connected and non-SPP; a transport for a connected SPP port', async () => {
+    assert.equal(await T.SerialTransport.granted(fakeSerial([])), null);
+    assert.equal(await T.SerialTransport.granted(fakeSerial([fakePort({ connected: false })])), null);
+    assert.equal(await T.SerialTransport.granted(fakeSerial([fakePort({ getInfo: () => ({ bluetoothServiceClassId: '0000110a-0000-1000-8000-00805f9b34fb' }) })])), null);
+    assert.equal(await T.SerialTransport.granted(fakeSerial([fakePort({ getInfo: () => ({}) })])), null);
+
+    const upper = fakePort({ getInfo: () => ({ bluetoothServiceClassId: SPP.toUpperCase() }) });
+    assert.equal((await T.SerialTransport.granted(fakeSerial([fakePort({ connected: false }), upper]))).port, upper);
+    const short = fakePort({ getInfo: () => ({ bluetoothServiceClassId: 0x1101 }) });
+    assert.equal((await T.SerialTransport.granted(fakeSerial([short]))).port, short);
+});
+
+test('SerialTransport.open passes baudRate 9600 and flowControl none', async () => {
+    const port = fakePort();
+    const t = new T.SerialTransport(port, fakeTimers());
+    await t.open();
+    assert.deepEqual(port.calls[0], ['open', { baudRate: 9600, flowControl: 'none' }]);
+    assert.equal(t.chunkSize, 512);
+    await t.close();
+});
+
+test('SerialTransport: 1-byte, split and coalesced chunks all reach read as bytes', async () => {
+    const port = fakePort();
+    const t = new T.SerialTransport(port, fakeTimers());
+    await t.open();
+    for (const b of [0x80, 0x20, 0x42]) port.push(b);
+    await tick();
+    assert.deepEqual(Array.from(await t.read(0)), [0x80, 0x20, 0x42]);
+    port.push(1, 2);
+    port.push(3);
+    await tick();
+    assert.deepEqual(Array.from(await t.read(0)), [1, 2, 3]);
+    port.push(...Array.from({ length: 32 }, (_, i) => i));
+    await tick();
+    assert.equal((await t.read(0)).length, 32);
+    t.drain();
+    assert.equal((await rejection(t.read(0))).code, 'timeout');
+    await t.close();
+});
+
+test('SerialTransport: a 1300 byte job goes out in 512 byte slices, in order', async () => {
+    const port = fakePort();
+    const t = new T.SerialTransport(port, fakeTimers());
+    await t.open();
+    const job = Uint8Array.from({ length: 1300 }, (_, i) => i & 255);
+    for (let at = 0; at < job.length; at += t.chunkSize) await t.write(job.subarray(at, at + t.chunkSize));
+    assert.deepEqual(port.written.map((c) => c.length), [512, 512, 276]);
+    assert.deepEqual(port.written.flat(), Array.from(job));
+    await t.close();
+});
+
+test('SerialTransport.open: a failing port.open is code open with the sentence, nothing stays locked, a second open works', async () => {
+    const port = fakePort();
+    const good = port.open;
+    port.open = async () => { throw Object.assign(new Error('Failed to open serial port.'), { name: 'NetworkError' }); };
+    const t = new T.SerialTransport(port, fakeTimers());
+    const e = await rejection(t.open());
+    assert.equal(e.code, 'open');
+    assert.match(e.message, /printer is on, paired in System Settings and not connected to another app/);
+    assert.match(e.message, /USB is the dependable option/);
+    assert.ok(!e.message.includes('Failed to open'));
+    assert.deepEqual(port.calls, [['close']], 'the port is closed again');
+
+    port.open = good;
+    await t.open();
+    port.push(5);
+    await tick();
+    assert.deepEqual(Array.from(await t.read(0)), [5]);
+    await t.close();
+});
+
+test('SerialTransport.open: a failure after the port opened releases the reader lock', async () => {
+    const port = fakePort();
+    const open = port.open;
+    port.open = async (o) => {
+        await open(o);
+        Object.defineProperty(port, 'writable', { configurable: true, get: () => { throw new Error('no writable'); } });
+    };
+    const t = new T.SerialTransport(port, fakeTimers());
+    assert.equal((await rejection(t.open())).code, 'open');
+    assert.equal(port.readable.locked, false);
+});
+
+test('SerialTransport: the read stream ending or a disconnect event fails the queue with lost and calls onLost once', async () => {
+    const ended = fakePort();
+    const a = new T.SerialTransport(ended, fakeTimers());
+    const lostA = [];
+    a.onLost = (e) => lostA.push(e);
+    await a.open();
+    ended.controller.close();
+    await tick();
+    assert.equal(lostA.length, 1);
+    assert.equal(lostA[0].code, 'lost');
+    assert.equal((await rejection(a.read(1000))).code, 'lost');
+
+    const gone = fakePort();
+    const b = new T.SerialTransport(gone, fakeTimers());
+    const lostB = [];
+    b.onLost = (e) => lostB.push(e);
+    await b.open();
+    gone.dispatchEvent(new Event('disconnect'));
+    gone.dispatchEvent(new Event('disconnect'));
+    assert.equal(lostB.length, 1);
+    assert.equal((await rejection(b.read(1000))).code, 'lost');
+});
+
+test('SerialTransport: a failing write means lost', async () => {
+    const port = fakePort();
+    const t = new T.SerialTransport(port, fakeTimers());
+    await t.open();
+    t.writer = { write: async () => { throw new Error('link down'); } };
+    assert.equal((await rejection(t.write(Uint8Array.of(1)))).code, 'lost');
+});
+
+test('SerialTransport.close cancels the reader and closes the port exactly once, without calling onLost', async () => {
+    const port = fakePort();
+    const t = new T.SerialTransport(port, fakeTimers());
+    const lost = [];
+    t.onLost = (e) => lost.push(e);
+    await t.open();
+    await t.close();
+    await t.close();
+    assert.equal(port.cancelled, 1);
+    assert.equal(port.calls.filter(([c]) => c === 'close').length, 1);
+    assert.equal(port.readable.locked, false);
+    assert.equal(port.writable.locked, false);
+    port.dispatchEvent(new Event('disconnect'));
+    await tick();
+    assert.equal(lost.length, 0);
+});

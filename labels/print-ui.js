@@ -1,4 +1,4 @@
-// Print controls of the label page: Connect USB, the printer status line and one Print button per card.
+// Print controls of the label page: Connect USB, Connect Bluetooth, the printer status line and one Print button per card.
 // Status and error text reaches the DOM through textContent only.
 const PrintUI = (function () {
     let $, renderFresh;
@@ -25,29 +25,36 @@ const PrintUI = (function () {
         if (old) await old.close();
     }
 
-    async function connect(next) {
-        await disconnect();   // the same printer cannot be claimed twice
-        transport = next;
-        next.onLost = (err) => {
-            if (transport !== next) return;
-            transport = null;
-            session = null;
-            connected = false;
-            setStatus(`Connection lost: ${err.message}`);
-            refresh();
-        };
+    // Shared by both Connect buttons. `pending` is the transport promise made by the click handler's first statement.
+    async function connect(pending, label) {
         try {
-            await next.open();
-            session = Printer.createSession(next);
-            const status = await session.readStatus();
-            connected = true;
-            const d = PTouch.describeStatus(status);
-            setStatus(`USB printer connected. ${d.ok ? `${status.widthMm} mm tape loaded.` : d.text}`);
+            const next = await pending;
+            await disconnect();   // the same printer cannot be claimed twice
+            transport = next;
+            next.onLost = (err) => {
+                if (transport !== next) return;
+                transport = null;
+                session = null;
+                connected = false;
+                setStatus(`Connection lost: ${err.message}`);
+                refresh();
+            };
+            try {
+                await next.open();
+                session = Printer.createSession(next);
+                const status = await session.readStatus();
+                connected = true;
+                const d = PTouch.describeStatus(status);
+                setStatus(`${label} printer connected. ${d.ok ? `${status.widthMm} mm tape loaded.` : d.text}`);
+            } catch (e) {
+                await disconnect();
+                throw e;
+            }
+            refresh();
         } catch (e) {
-            await disconnect();
-            throw e;
+            if (e && e.name === 'NotFoundError') return;   // chooser cancelled or no device: stay as we were
+            setStatus(e.message || String(e));
         }
-        refresh();
     }
 
     async function printCard(rec, stateEl) {
@@ -74,21 +81,23 @@ const PrintUI = (function () {
     function init(deps) {
         ({ $, renderFresh } = deps);
         setStatus('Not connected. Connect a printer to print.');
-        const button = $('connectUsb');
-        if (!navigator.usb) {
-            button.disabled = true;
-            button.title = 'USB needs a Chromium based browser';
-            return;
+        const unavailable = (button, reason) => { button.disabled = true; button.title = reason; };
+        if (navigator.usb) {
+            $('connectUsb').addEventListener('click', () => {
+                const pending = Transport.UsbTransport.request(navigator.usb);
+                return connect(pending, 'USB');
+            });
+        } else {
+            unavailable($('connectUsb'), 'USB needs a Chromium based browser');
         }
-        button.addEventListener('click', async () => {
-            const pending = Transport.UsbTransport.request(navigator.usb);
-            try {
-                await connect(await pending);
-            } catch (e) {
-                if (e && e.name === 'NotFoundError') return;   // chooser cancelled or no device: stay as we were
-                setStatus(e.message || String(e));
-            }
-        });
+        if (navigator.serial) {
+            $('connectBt').addEventListener('click', () => {
+                const pending = Transport.SerialTransport.request(navigator.serial, navigator.userAgent);
+                return connect(pending, 'Bluetooth');
+            });
+        } else {
+            unavailable($('connectBt'), 'Bluetooth needs a Chromium based browser');
+        }
     }
 
     function cardControls(rec) {

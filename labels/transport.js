@@ -10,6 +10,10 @@
     const USB_PACKET = 64;
     const USB_CHUNK = 1024;       // bytes per transferOut
     const QUEUE_CAP = 4096;       // receive queue limit, the oldest bytes are dropped
+    const SERIAL_SPP = '00001101-0000-1000-8000-00805f9b34fb';   // Bluetooth Serial Port Profile class id
+    const SERIAL_BAUD = 9600;     // mandatory in the call, ignored by RFCOMM
+    const SERIAL_CHUNK = 512;     // bytes per write
+    const SERIAL_OPEN_FAILED = 'Could not open the Bluetooth connection. Check that the printer is on, paired in System Settings and not connected to another app. USB is the dependable option.';
 
     const coded = (code, message) => Object.assign(new Error(message), { code });
 
@@ -169,7 +173,115 @@
         }
     }
 
-    const api = { ByteQueue, UsbTransport, USB_VENDOR, USB_PRODUCT, USB_IFACE, USB_OUT_EP, USB_IN_EP, USB_PACKET, USB_CHUNK, QUEUE_CAP };
+    // Firefox 151 to 155 accept the Bluetooth filter but match nothing, so it gets an unfiltered chooser. Capability stays feature detected.
+    function serialOptions(userAgent) {
+        if (/Firefox\//.test(userAgent || '')) return undefined;
+        return { filters: [{ bluetoothServiceClassId: SERIAL_SPP }], allowedBluetoothServiceClassIds: [SERIAL_SPP] };
+    }
+
+    const isSpp = (id) => (typeof id === 'string' ? id.toLowerCase() === SERIAL_SPP : id === 0x1101);
+
+    // Web Serial over a paired Bluetooth SPP link. Opened once per page session, never per print.
+    class SerialTransport {
+        // The chooser needs a user gesture: call this first in the click handler, with no await before it (D-06 amendment).
+        static request(serial, userAgent) {
+            const pending = serial.requestPort(serialOptions(userAgent));
+            return pending.then((port) => new SerialTransport(port));
+        }
+
+        // A granted SPP port that is connected right now, or null. No prompt: getPorts() may also list dead iAP ports.
+        static async granted(serial) {
+            const ports = await serial.getPorts();
+            const port = ports.find((p) => p.connected === true && isSpp(p.getInfo().bluetoothServiceClassId));
+            return port ? new SerialTransport(port) : null;
+        }
+
+        constructor(port, timers) {
+            this.port = port;
+            this.queue = new ByteQueue(timers);
+            this.chunkSize = SERIAL_CHUNK;
+            this.onLost = null;
+            this.closing = false;
+            this.lostError = null;
+            this.listener = null;
+            this.reader = null;
+            this.writer = null;
+        }
+
+        async open() {
+            const { port } = this;
+            let reader = null, writer = null;
+            try {
+                await port.open({ baudRate: SERIAL_BAUD, flowControl: 'none' });
+                reader = port.readable.getReader();
+                writer = port.writable.getWriter();
+            } catch (e) {
+                try { reader?.releaseLock(); } catch { /* already released */ }
+                try { writer?.releaseLock(); } catch { /* already released */ }
+                await port.close().catch(() => {});
+                throw coded('open', SERIAL_OPEN_FAILED);
+            }
+            this.reader = reader;
+            this.writer = writer;
+            this.listener = () => this.lose('The printer was switched off or went out of range.');
+            port.addEventListener('disconnect', this.listener);
+            this.pump(reader);
+        }
+
+        // Marks the link dead once: fails pending and later reads, tells the page, returns the error.
+        lose(message) {
+            if (this.lostError || this.closing) return this.lostError || coded('lost', message);
+            this.lostError = coded('lost', message);
+            this.queue.fail(this.lostError);
+            if (this.onLost) this.onLost(this.lostError);
+            return this.lostError;
+        }
+
+        // One persistent read loop; chunks of any size are queued and framed by the session.
+        async pump(reader) {
+            try {
+                for (;;) {
+                    const { value, done } = await reader.read();
+                    if (this.closing) return;
+                    if (done) break;
+                    if (value && value.length) this.queue.push(value.slice());
+                }
+                this.lose('The Bluetooth connection closed.');
+            } catch (e) {
+                this.lose(e.message || 'Bluetooth read failed');
+            }
+        }
+
+        async write(chunk) {
+            try {
+                await this.writer.write(chunk);
+            } catch (e) {
+                throw this.lose(e.message || 'Bluetooth write failed');
+            }
+        }
+
+        read(timeoutMs) {
+            return this.queue.read(timeoutMs);
+        }
+
+        drain() {
+            this.queue.drain();
+        }
+
+        async close() {
+            if (this.closing) return;
+            this.closing = true;
+            if (this.listener) this.port.removeEventListener('disconnect', this.listener);
+            await this.reader?.cancel().catch(() => {});
+            try { this.reader?.releaseLock(); } catch { /* already released */ }
+            await this.writer?.close().catch(() => {});
+            try { this.writer?.releaseLock(); } catch { /* already released */ }
+            await this.port.close().catch(() => {});
+        }
+    }
+
+    const api = { ByteQueue, UsbTransport, USB_VENDOR, USB_PRODUCT, USB_IFACE, USB_OUT_EP, USB_IN_EP, USB_PACKET, USB_CHUNK, QUEUE_CAP,
+        SerialTransport, serialOptions, SERIAL_SPP, SERIAL_BAUD, SERIAL_CHUNK };
     if (typeof module !== 'undefined' && module.exports) module.exports = api;
     else root.Transport = api;
 })(typeof globalThis !== 'undefined' ? globalThis : this);
