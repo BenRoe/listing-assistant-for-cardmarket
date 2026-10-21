@@ -372,7 +372,15 @@ test('layoutLabel: deterministic and the stack is centred vertically', () => {
         assert.deepEqual(layoutLabel(input, fakeMeasure), a);
         const spans = extents(a);
         const top = Math.min(...spans.map((s) => s[0])), bottom = Math.max(...spans.map((s) => s[1]));
-        assert.ok(Math.abs((top + bottom) / 2 - 64) <= 2, `centre ${(top + bottom) / 2}`);
+        assert.ok(Math.abs((top + bottom) / 2 - 64) <= 4, `centre ${(top + bottom) / 2}`);   // 3 dots off without badges: their padding is still reserved
+    }
+});
+
+test('layoutLabel: name and code keep their place and gap when FOIL or a condition is toggled', () => {
+    const base = textOps(layoutLabel(ALL_ON, fakeMeasure));
+    for (const extra of [{ foil: true }, { cond: 'NM' }, { foil: true, cond: 'NM' }]) {
+        const t = textOps(layoutLabel({ ...ALL_ON, ...extra }, fakeMeasure)).filter((o) => o.text === 'Onslaught' || o.text === 'ONS');
+        assert.deepEqual(t.map((o) => o.y), base.map((o) => o.y), JSON.stringify(extra));
     }
 });
 

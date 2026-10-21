@@ -262,11 +262,11 @@
         if (hasSmall) {
             const font = NAME_FONT(smallSize);
             const cap = Math.round(measure(font, 'H').ascent);
-            const hasBadge = foil || cond !== 'none';
+            // the line always reserves the badge padding, so the name and code do not move when FOIL or a condition is toggled
             lines.push({
-                height: hasBadge ? cap + 2 * BADGE_PAD_Y : cap,
+                height: cap + 2 * BADGE_PAD_Y,
                 draw: (top) => {
-                    const baseline = top + (hasBadge ? BADGE_PAD_Y : 0) + cap;
+                    const baseline = top + BADGE_PAD_Y + cap;
                     let x = textX;
                     const place = (text, radius) => {
                         const w = Math.ceil(measure(font, text).width) + 2 * BADGE_PAD_X;
