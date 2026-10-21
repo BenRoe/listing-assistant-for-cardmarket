@@ -18,6 +18,5 @@ commit_parsers = [
     { message = "^(chore(\\(.*\\))?: )?release", skip = true },
     { message = "^feat", group = "Features" },
     { message = "^fix", group = "Fixes" },
-    { message = "^docs", group = "Documentation" },
-    { message = "^(test|chore|refactor|style)", group = "Other" },
+    { message = "^(docs|test|chore|refactor|style|ci)", skip = true },
 ]

@@ -31,6 +31,14 @@ jobs:
         env:
           OUTPUT: RELEASE_NOTES.md
 
+      - name: Use the hand-written feature summary when the version has one
+        run: |
+          f=".github/release-notes/${GITHUB_REF_NAME}.md"
+          if [ -f "$f" ]; then
+            { echo "### Features"; cat "$f"; echo; awk '/^### /{p=($0=="### Fixes")} p' RELEASE_NOTES.md; } > RELEASE_NOTES.final.md
+            mv RELEASE_NOTES.final.md RELEASE_NOTES.md
+          fi
+
       - name: Package the extension
         run: zip -r "listing-assistant-for-cardmarket-${GITHUB_REF_NAME}.zip" manifest.json icons css js lib options labels
 
