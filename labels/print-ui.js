@@ -46,7 +46,6 @@ const PrintUI = (function () {
 
     // The grant list changes after a close or a loss; an unplugged device is gone from it
     async function refreshKnown() {
-        knownDevice = null;
         if (usbReason) return;
         try {
             knownDevice = await Transport.UsbTransport.granted(navigator.usb);

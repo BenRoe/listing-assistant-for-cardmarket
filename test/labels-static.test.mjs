@@ -238,3 +238,17 @@ test('[D-06 amendment] nothing is awaited between the Connect USB handler and Us
     assert.ok(start >= 0 && end > start, 'connectUsb handler and request call found in order');
     assert.doesNotMatch(text.slice(start, end), /\bawait\b/);
 });
+
+test('[PRNT-03/ids] labels.html carries the print controls', () => {
+    const html = read('labels/labels.html').toString('utf8');
+    for (const id of ['connectUsb', 'refresh', 'printAll', 'optCut', 'printerStatus', 'printerRaw', 'usbReason']) assert.match(html, new RegExp(`\\bid="${id}"`), id);
+    assert.doesNotMatch(html, /Bluetooth/i, 'Bluetooth is deferred (D-17): no page copy offers it');
+});
+
+test('[D-07] no timers or polling in the print files; setInterval appears in no labels file', () => {
+    for (const f of ['ptouch.js', 'printer.js', 'print-ui.js']) {
+        const text = read(`labels/${f}`).toString('utf8');
+        assert.doesNotMatch(text, /\bset(Interval|Timeout)\b/, `${f} uses a timer`);
+    }
+    for (const f of labelFiles('.js')) assert.doesNotMatch(read(`labels/${f}`).toString('utf8'), /\bsetInterval\b/, `${f} uses setInterval`);
+});

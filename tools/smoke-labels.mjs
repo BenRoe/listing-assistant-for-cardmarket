@@ -96,19 +96,24 @@ async function openLabels(env, base, hash, reset = true) {
     return page;
 }
 
-// Init scripts (run in the page): one printer model shared by the USB and the serial stub. Writes are recorded in window.__printer.writes;
-// a whole-write status request answers with a status frame, a complete job answers with three frames (phase, completed, phase).
+// Init scripts (run in the page): one printer model shared by the transport stubs. Writes are recorded in window.__printer.writes.
+// A whole-write status request answers with a status frame, a complete job answers with three frames (phase, completed, phase).
+// Test knobs: widthMm, mediaType, nextStatus (one entry per status request: null for the idle reply or { widthMm, err7, err8, err9, statusType }),
+// failWrite (the stub write rejects), hold (the completion frames wait for release()), counters jobs and requestDeviceCalls.
 function installPrinterModel() {
-    const printer = { writes: [], widthMm: 24, queue: [], waiting: null, job: null };
+    const printer = { writes: [], widthMm: 24, mediaType: 1, nextStatus: [], failWrite: false, failOpen: false, granted: false, hold: false, held: null, jobs: 0, requestDeviceCalls: 0, queue: [], waiting: null, job: null };
     window.__printer = printer;
     printer.isStatusRequest = (w) => w.length === 105 && w.slice(0, 100).every((b) => b === 0) && w[100] === 0x1b && w[101] === 0x40 && w[102] === 0x1b && w[103] === 0x69 && w[104] === 0x53;
     const startsJob = (b) => b.length >= 121 && b.slice(0, 100).every((x) => x === 0) && [0x1b, 0x40, 0x1b, 0x69, 0x61, 0x01].every((x, i) => b[100 + i] === x);
-    const frame = (statusType, phaseType) => {
+    const frame = (statusType, phaseType, over = {}) => {
         const f = new Uint8Array(32);
         f.set([0x80, 0x20, 0x42, 0x30, 0x76, 0x30]);
-        f[10] = printer.widthMm;
-        f[11] = 1;
-        f[18] = statusType;
+        f[7] = over.err7 ?? 0;
+        f[8] = over.err8 ?? 0;
+        f[9] = over.err9 ?? 0;
+        f[10] = over.widthMm ?? printer.widthMm;
+        f[11] = printer.mediaType;
+        f[18] = over.statusType ?? statusType;
         f[19] = phaseType;
         return f;
     };
@@ -120,19 +125,28 @@ function installPrinterModel() {
             resolve(printer.queue.shift());
         }
     };
+    printer.release = () => {
+        const frames = printer.held || [];
+        printer.hold = false;
+        printer.held = null;
+        push(...frames);
+    };
     printer.receive = (bytes) => {
         printer.writes.push(bytes);
         if (printer.job) {
             printer.job.seen += bytes.length;
         } else if (printer.isStatusRequest(bytes)) {
-            push(frame(0, 0));
+            push(frame(0, 0, printer.nextStatus.shift() || {}));
         } else if (startsJob(bytes)) {
             const lines = bytes[117] | (bytes[118] << 8) | (bytes[119] << 16) | (bytes[120] << 24);
+            printer.jobs++;
             printer.job = { seen: bytes.length, total: 139 + 19 * lines };
         }
         if (printer.job && printer.job.seen >= printer.job.total) {
             printer.job = null;
-            push(frame(6, 1), frame(1, 0), frame(6, 0));
+            const frames = [frame(6, 1), frame(1, 0), frame(6, 0)];
+            if (printer.hold) printer.held = frames;
+            else push(...frames);
         }
     };
     printer.nextFrame = () => new Promise((resolve) => { printer.waiting = resolve; push(); });
@@ -142,19 +156,25 @@ function installUsbStub() {
     const printer = window.__printer;
     const device = {
         vendorId: 0x04f9, productId: 0x20af, configuration: {},
-        open: async () => {}, selectConfiguration: async () => {}, claimInterface: async () => {}, releaseInterface: async () => {}, close: async () => {},
+        open: async () => { if (printer.failOpen) throw new DOMException('Access denied', 'NetworkError'); },
+        selectConfiguration: async () => {}, claimInterface: async () => {}, releaseInterface: async () => {}, close: async () => {},
         transferOut: async (endpoint, data) => {
+            if (printer.failWrite) throw new DOMException('The device was disconnected', 'NetworkError');
             const bytes = Array.from(new Uint8Array(data.buffer ?? data, data.byteOffset ?? 0, data.byteLength));
             printer.receive(bytes);
             return { status: 'ok', bytesWritten: bytes.length };
         },
         transferIn: () => printer.nextFrame().then((f) => ({ status: 'ok', data: new DataView(f.buffer) }))
     };
-    const usb = { requestDevice: async () => device, getDevices: async () => [], addEventListener() {}, removeEventListener() {} };
+    const usb = {
+        requestDevice: async () => { printer.requestDeviceCalls++; printer.granted = true; return device; },
+        getDevices: async () => (printer.granted ? [device] : []),
+        addEventListener() {}, removeEventListener() {}
+    };
     Object.defineProperty(navigator, 'usb', { configurable: true, value: usb });
 }
 
-const addPrinterStub = (page, stub) => page.addInitScript(`(${installPrinterModel})();(${stub})();`);
+const addPrinterStub = (page, stub, preset = {}) => page.addInitScript(`(${installPrinterModel})();Object.assign(window.__printer, ${JSON.stringify(preset)});(${stub})();`);
 
 // Connect, print one card and compare the bytes after the last status request with a fresh in-page render
 async function printAndCompare(page, base, expect, button, status) {
@@ -175,6 +195,28 @@ async function printAndCompare(page, base, expect, button, status) {
         };
     });
 }
+
+const connectUsb = async (page) => {
+    await page.click('#connectUsb');
+    await page.waitForFunction(() => document.getElementById('printerStatus').textContent.startsWith('USB printer'));
+};
+const printerValue = (page, expression) => page.evaluate(`window.__printer.${expression}`);
+const statusHas = (page, text) => page.waitForFunction((t) => document.getElementById('printerStatus').textContent.includes(t), text);
+const cardStates = (page) => page.$$eval('#cards .card', (cards) => cards.map((c) => c.querySelector('.print-state').textContent));
+const readyCards = (page, n) => page.waitForFunction((count) => document.querySelectorAll('#cards .card[data-ready="1"]').length === count, n);
+const setCopies = async (page, selector, value) => {
+    await page.fill(selector, value);
+    await page.dispatchEvent(selector, 'change');
+};
+// Bytes written since the last status request of the page (the job of the most recent print)
+const lastJob = (page) => page.evaluate(() => {
+    const { writes, isStatusRequest } = window.__printer;
+    return writes.slice(writes.map(isStatusRequest).lastIndexOf(true) + 1).flat();
+});
+const rasterSince = (page, mark) => page.evaluate((from) => {
+    const bytes = window.__printer.writes.slice(from).flat();
+    return bytes.some((b, i) => b === 0x47 && bytes[i + 1] === 0x10 && bytes[i + 2] === 0x00);
+}, mark);
 
 const rowCodes = (page, list) => page.evaluate((id) => [...document.querySelectorAll(`#${id} .set-row`)].map((r) => r.dataset.code), list);
 
@@ -428,6 +470,156 @@ const scenarios = [
         });
         expect(!rasterWritten, 'a raster line was written for the wrong tape');
         expect(!(await page.locator('button[data-action="print"]').isDisabled()), 'page is usable after a failed print');
+    }],
+    ['print-errors', async (page, base, expect) => {
+        await addPrinterStub(page, installUsbStub);
+        await page.goto(`${base}/labels.html#sets=ons`);
+        await page.waitForSelector(READY);
+        await connectUsb(page);
+        const mark = () => printerValue(page, 'writes.length');
+        const failedWith = async (text) => {
+            await page.waitForFunction((t) => document.querySelector('.print-state').textContent === 'Failed' && document.getElementById('printerStatus').textContent.includes(t), text);
+        };
+
+        let from = await mark();
+        await page.evaluate(() => { window.__printer.widthMm = 12; });
+        await page.click('button[data-action="print"]');
+        await failedWith('12 mm');
+        expect((await page.textContent('#printerStatus')).includes('24 mm'), 'mismatch sentence names 24 mm');
+        const raw = await page.textContent('#printerRaw');
+        expect(/^([0-9a-f]{2} ){31}[0-9a-f]{2}$/.test(raw), `raw line ${raw}`);
+        expect(!(await rasterSince(page, from)), 'a raster line was written for the wrong tape');
+
+        for (const [over, text] of [[{ err9: 0x10 }, 'Cover is open. Close it and press Print again.'], [{ widthMm: 0, err8: 0x01 }, 'No tape is loaded.'], [{ err8: 0x08 }, 'The battery is low.']]) {
+            from = await mark();
+            await page.evaluate((o) => { window.__printer.widthMm = 24; window.__printer.nextStatus = [o]; }, over);
+            await page.click('button[data-action="print"]');
+            await failedWith(text);
+            expect(!(await rasterSince(page, from)), `a raster line was written for ${text}`);
+        }
+
+        await page.evaluate(() => { window.__printer.nextStatus = []; });
+        await page.click('button[data-action="print"]');
+        await page.waitForFunction(() => document.querySelector('.print-state').textContent === 'Printed');
+        expect(!(await page.locator('button[data-action="print"]').isDisabled()) && !(await page.locator('#printAll').isDisabled()), 'page is usable after the errors');
+    }],
+    ['print-batch', async (page, base, expect) => {
+        await addPrinterStub(page, installUsbStub);
+        await page.goto(`${base}/labels.html#sets=ons,dom,clb`);
+        await readyCards(page, 3);
+        await setCopies(page, '.card[data-code="ons"] input.copies', '2');
+        await connectUsb(page);
+
+        await page.evaluate(() => { window.__printer.nextStatus = [null, null, { err9: 0x10 }]; });
+        await page.click('#printAll');
+        await statusHas(page, 'Cover is open');
+        expect((await page.textContent('#printerStatus')).includes('2 of 4 printed'), `status ${await page.textContent('#printerStatus')}`);
+        const states = await cardStates(page);
+        expect(states.join('|') === 'Printed 2 of 2|Failed|Queued', `states ${states}`);
+        expect(await printerValue(page, 'jobs') === 2, `jobs ${await printerValue(page, 'jobs')}`);
+
+        await page.evaluate(() => { window.__printer.nextStatus = []; });
+        await page.click('#printAll');
+        await statusHas(page, 'Printed 4 of 4.');
+        expect(await printerValue(page, 'jobs') === 4, `jobs after the resume ${await printerValue(page, 'jobs')}`);
+        expect((await cardStates(page)).join('|') === 'Printed 2 of 2|Printed|Printed', `states ${await cardStates(page)}`);
+
+        // one job in flight: while the completion frame is held every control is off and a forced click is ignored
+        await page.evaluate(() => { window.__printer.hold = true; });
+        await page.click('.card[data-code="dom"] button[data-action="print"]');
+        await page.waitForFunction(() => document.querySelector('.card[data-code="dom"] .print-state').textContent === 'Printing');
+        const off = await page.evaluate(() => ({
+            prints: [...document.querySelectorAll('button[data-action="print"]')].every((b) => b.disabled),
+            others: ['printAll', 'refresh', 'connectUsb'].map((id) => document.getElementById(id).disabled)
+        }));
+        expect(off.prints && off.others.every(Boolean), `controls during a job ${JSON.stringify(off)}`);
+        await page.dispatchEvent('#printAll', 'click');
+        await page.evaluate(() => window.__printer.release());
+        await statusHas(page, 'Printed 1 of 1.');
+        expect(await printerValue(page, 'jobs') === 5, `jobs after the forced click ${await printerValue(page, 'jobs')}`);
+    }],
+    ['print-cut', async (page, base, expect) => {
+        await addPrinterStub(page, installUsbStub);
+        await page.goto(`${base}/labels.html#sets=ons`);
+        await page.waitForSelector(READY);
+        expect(await page.isChecked('#optCut'), 'cut is on by default');
+        await connectUsb(page);
+        const printOnce = async (n) => {
+            await page.click('button[data-action="print"]');
+            await page.waitForFunction((count) => window.__printer.jobs === count && document.querySelector('.print-state').textContent === 'Printed', n);
+        };
+        await printOnce(1);
+        expect((await lastJob(page))[126] === 0x40, 'ESC i M value with the cut on');
+        await page.uncheck('#optCut');
+        await printOnce(2);
+        expect((await lastJob(page))[126] === 0x00, 'ESC i M value with the cut off');
+
+        await page.reload();
+        await page.waitForSelector(READY);
+        expect(!(await page.isChecked('#optCut')), 'cut stays off after a reload');
+        expect(await page.evaluate(() => JSON.parse(localStorage.getItem('cmlp.labels.settings')).cut) === false, 'stored cut is false');
+
+        await setCopies(page, 'input.copies', '3');
+        await page.check('#allSets input[data-code="dom"]');
+        await readyCards(page, 2);
+        expect(await page.inputValue('.card[data-code="dom"] input.copies') === '3', 'a newly ticked card takes the last copies value');
+        const keys = await page.evaluate(() => Object.keys(localStorage));
+        expect(keys.every((k) => ['cmlp.labels.settings', 'cmlp.labels.sets'].includes(k)), `localStorage keys ${keys}`);
+    }],
+    ['print-lost', async (page, base, expect) => {
+        await addPrinterStub(page, installUsbStub);
+        await page.goto(`${base}/labels.html#sets=ons,dom`);
+        await readyCards(page, 2);
+        await connectUsb(page);
+        const chooserCalls = await printerValue(page, 'requestDeviceCalls');
+        expect(chooserCalls === 1, `chooser calls ${chooserCalls}`);
+
+        await page.evaluate(() => { window.__printer.failWrite = true; });
+        await page.click('#printAll');
+        await statusHas(page, 'Connection lost');
+        expect((await page.textContent('#printerStatus')).startsWith('Connection lost'), `status ${await page.textContent('#printerStatus')}`);
+        await page.waitForFunction(() => document.querySelector('#cards .card .print-state').textContent === 'Failed');
+        expect((await cardStates(page)).join('|') === 'Failed|Queued', `states ${await cardStates(page)}`);
+        const after = await page.evaluate(() => ({
+            prints: [...document.querySelectorAll('button[data-action="print"]')].every((b) => b.disabled),
+            connect: !document.getElementById('connectUsb').disabled,
+            printed: [...state.ticked.values()].map((r) => r.printed)
+        }));
+        expect(after.prints && after.connect && after.printed.join() === '0,0', `after the loss ${JSON.stringify(after)}`);
+
+        await page.evaluate(() => { window.__printer.failWrite = false; });
+        await page.click('#connectUsb');
+        await statusHas(page, 'USB printer ready');
+        expect(await printerValue(page, 'requestDeviceCalls') === chooserCalls, 'reconnect used the known device without a chooser');
+        await page.click('#printAll');
+        await statusHas(page, 'Printed 2 of 2.');
+    }],
+    ['print-support', async (page, base, expect) => {
+        await page.addInitScript(() => { delete Navigator.prototype.usb; delete Navigator.prototype.serial; });
+        await page.goto(`${base}/labels.html#sets=ons`);
+        await page.waitForSelector(READY);
+        expect(await page.locator('#connectUsb').isDisabled(), 'Connect USB is disabled');
+        expect(await page.textContent('#usbReason') === 'USB needs a Chromium based browser', `reason ${await page.textContent('#usbReason')}`);
+        expect(await page.locator('#connectBt, #btReason').count() === 0, 'no Bluetooth control is offered');
+        expect(!(await page.locator('body').innerText()).includes('Bluetooth'), 'no page copy mentions Bluetooth');
+        const png = readPng((await saveDownload(page, () => page.click('button[data-action="download"]'))).bytes);
+        expect(png.height === 128, 'PNG export still works');
+    }],
+    ['print-reconnect', async (page, base, expect, env) => {
+        await addPrinterStub(page, installUsbStub, { granted: true });
+        await page.goto(`${base}/labels.html#sets=ons`);
+        await page.waitForSelector(READY);
+        await statusHas(page, '24 mm');
+        expect(await printerValue(page, 'requestDeviceCalls') === 0, 'no chooser at load');
+        await page.waitForFunction(() => !document.querySelector('button[data-action="print"]').disabled);
+
+        // a granted device that cannot be opened stays silent: no message, no error
+        const busy = await env.context.newPage();
+        await addPrinterStub(busy, installUsbStub, { granted: true, failOpen: true });
+        await busy.goto(`${base}/labels.html#sets=ons`);
+        await busy.waitForSelector(READY);
+        await busy.waitForFunction(() => document.getElementById('printerStatus').textContent === 'Not connected. Connect a printer to print.');
+        expect(await busy.locator('#connectUsb').isEnabled() && await busy.locator('button[data-action="print"]').isDisabled(), 'Connect stays available');
     }],
     ['offline', async (page, base, expect, env) => {
         env.sets.mode = 'abort';
