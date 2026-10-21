@@ -30,6 +30,9 @@
         .set-note { padding: 8px; color: GrayText; }
         .toolbar { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; margin-bottom: 16px; }
         .toolbar input[type=number] { width: 6ch; }
+        #printerStatus { min-height: 1.2em; margin: -8px 0 16px; font-size: 12px; }
+        .card-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+        .print-state { font-size: 12px; }
         #empty { color: GrayText; }
         .card { border: 1px solid GrayText; border-radius: 6px; padding: 12px; margin: 0 0 16px; }
         .card-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
@@ -67,7 +70,9 @@
                 <label><input id="optCode" type="checkbox"> Show code</label>
                 <label title="Long names break into two lines and shrink to stay within this length">Max label length (mm) <input id="maxMm" type="number" min="25" max="1000" step="1" placeholder="100"></label>
                 <button id="downloadAll" type="button" disabled>Download all (ZIP)</button>
+                <button id="connectUsb" type="button">Connect USB</button>
             </div>
+            <p id="printerStatus" role="status"></p>
             <p id="empty">No sets ticked. Tick a set on the left to make a label.</p>
             <div id="cards"></div>
             <section class="tips">
@@ -83,6 +88,10 @@
     <script src="core.js"></script>
     <script src="keyrune-map.js"></script>
     <script src="csv-sets.js"></script>
+    <script src="ptouch.js"></script>
+    <script src="printer.js"></script>
+    <script src="transport.js"></script>
+    <script src="print-ui.js"></script>
     <script src="labels.js"></script>
 </body>
 </html>

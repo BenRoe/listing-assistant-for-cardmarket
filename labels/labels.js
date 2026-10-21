@@ -237,7 +237,9 @@ function buildCard(rec) {
     const download = Object.assign(document.createElement('button'), { type: 'button', textContent: 'Download PNG' });
     download.dataset.action = 'download';
     download.addEventListener('click', () => downloadOne(rec.code).catch((e) => showError(rec, e)));
-    card.append(head, options, strip, caption, notices, download);
+    const actions = Object.assign(document.createElement('div'), { className: 'card-actions' });
+    actions.append(download, ...PrintUI.cardControls(rec));
+    card.append(head, options, strip, caption, notices, actions);
     return card;
 }
 
@@ -274,6 +276,7 @@ function reorderCards() {
 function updateChrome() {
     $('empty').hidden = state.ticked.size > 0;
     $('downloadAll').disabled = state.building || ![...state.ticked.values()].some((r) => r.result && !r.result.layout.empty);
+    PrintUI.refresh();   // renderCard ends with updateChrome, so a finished render also refreshes the Print buttons
 }
 
 function toggleSet(code, on) {
@@ -369,6 +372,7 @@ function readControls(writeBack) {
 (function init() {
     loadSettings();
     applySettingsToControls();
+    PrintUI.init({ $, renderFresh });
     for (const id of ['optIcon', 'optName', 'optCode']) $(id).addEventListener('change', () => readControls(false));
     $('maxMm').addEventListener('input', () => readControls(false));
     $('maxMm').addEventListener('change', () => readControls(true));

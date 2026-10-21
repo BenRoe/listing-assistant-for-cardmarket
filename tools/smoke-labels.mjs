@@ -96,6 +96,57 @@ async function openLabels(env, base, hash, reset = true) {
     return page;
 }
 
+// Init script (runs in the page): a stubbed PT-P710BT on navigator.usb. Writes are recorded in window.__printer.writes;
+// a whole-write status request answers with a status frame, a complete job answers with three frames (phase, completed, phase).
+function installUsbStub() {
+    const printer = { writes: [], widthMm: 24, queue: [], waiting: null, job: null };
+    window.__printer = printer;
+    printer.isStatusRequest = (w) => w.length === 105 && w.slice(0, 100).every((b) => b === 0) && w[100] === 0x1b && w[101] === 0x40 && w[102] === 0x1b && w[103] === 0x69 && w[104] === 0x53;
+    const startsJob = (b) => b.length >= 121 && b.slice(0, 100).every((x) => x === 0) && [0x1b, 0x40, 0x1b, 0x69, 0x61, 0x01].every((x, i) => b[100 + i] === x);
+    const frame = (statusType, phaseType) => {
+        const f = new Uint8Array(32);
+        f.set([0x80, 0x20, 0x42, 0x30, 0x76, 0x30]);
+        f[10] = printer.widthMm;
+        f[11] = 1;
+        f[18] = statusType;
+        f[19] = phaseType;
+        return f;
+    };
+    const push = (...frames) => {
+        printer.queue.push(...frames);
+        if (printer.waiting && printer.queue.length) {
+            const resolve = printer.waiting;
+            printer.waiting = null;
+            resolve(printer.queue.shift());
+        }
+    };
+    const device = {
+        vendorId: 0x04f9, productId: 0x20af, configuration: {},
+        open: async () => {}, selectConfiguration: async () => {}, claimInterface: async () => {}, releaseInterface: async () => {}, close: async () => {},
+        transferOut: async (endpoint, data) => {
+            const bytes = Array.from(new Uint8Array(data.buffer ?? data, data.byteOffset ?? 0, data.byteLength));
+            printer.writes.push(bytes);
+            if (printer.job) {
+                printer.job.seen += bytes.length;
+            } else if (printer.isStatusRequest(bytes)) {
+                push(frame(0, 0));
+            } else if (startsJob(bytes)) {
+                const lines = bytes[117] | (bytes[118] << 8) | (bytes[119] << 16) | (bytes[120] << 24);
+                printer.job = { seen: bytes.length, total: 139 + 19 * lines };
+            }
+            if (printer.job && printer.job.seen >= printer.job.total) {
+                printer.job = null;
+                push(frame(6, 1), frame(1, 0), frame(6, 0));
+            }
+            return { status: 'ok', bytesWritten: bytes.length };
+        },
+        transferIn: () => new Promise((resolve) => { printer.waiting = resolve; push(); })
+            .then((f) => ({ status: 'ok', data: new DataView(f.buffer) }))
+    };
+    const usb = { requestDevice: async () => device, getDevices: async () => [], addEventListener() {}, removeEventListener() {} };
+    Object.defineProperty(navigator, 'usb', { configurable: true, value: usb });
+}
+
 const rowCodes = (page, list) => page.evaluate((id) => [...document.querySelectorAll(`#${id} .set-row`)].map((r) => r.dataset.code), list);
 
 const scenarios = [
@@ -330,6 +381,37 @@ const scenarios = [
             expect(await p.locator('#cards .card').count() === 1, `${name}: fragment still works`);
         }
     }],
+    ['usb-print', async (page, base, expect) => {
+        await page.addInitScript(installUsbStub);
+        await page.goto(`${base}/labels.html#sets=ons`);
+        await page.waitForSelector(READY);
+        expect(await page.locator('button[data-action="print"]').isDisabled(), 'Print is disabled before Connect USB');
+        await page.click('#connectUsb');
+        await page.waitForFunction(() => document.getElementById('printerStatus').textContent.includes('24 mm'));
+        await page.click('button[data-action="print"]');
+        await page.waitForFunction(() => document.querySelector('.print-state').textContent === 'Printed');
+        const sent = await page.evaluate(async () => {
+            const { writes, isStatusRequest } = window.__printer;
+            const last = writes.map(isStatusRequest).lastIndexOf(true);
+            const { bitmap } = await renderFresh(state.ticked.get('ons'));
+            return { actual: writes.slice(last + 1).flat(), expected: Array.from(PTouch.buildJob(bitmap, { cut: true })), requests: writes.filter(isStatusRequest).length };
+        });
+        expect(sent.actual.length === sent.expected.length && sent.actual.every((b, i) => b === sent.expected[i]), `job bytes differ (${sent.actual.length} sent, ${sent.expected.length} expected)`);
+        expect(sent.requests >= 2, `status requests ${sent.requests}`);
+
+        // a 12 mm cassette: Print fails before any job byte
+        await page.evaluate(() => { window.__printer.widthMm = 12; window.__printer.mark = window.__printer.writes.length; });
+        await page.click('button[data-action="print"]');
+        await page.waitForFunction(() => document.querySelector('.print-state').textContent.startsWith('Failed'));
+        const text = await page.textContent('.print-state');
+        expect(text.includes('12 mm') && text.includes('24 mm'), `mismatch text ${text}`);
+        const rasterWritten = await page.evaluate(() => {
+            const bytes = window.__printer.writes.slice(window.__printer.mark).flat();
+            return bytes.some((b, i) => b === 0x47 && bytes[i + 1] === 0x10 && bytes[i + 2] === 0x00);
+        });
+        expect(!rasterWritten, 'a raster line was written for the wrong tape');
+        expect(!(await page.locator('button[data-action="print"]').isDisabled()), 'page is usable after a failed print');
+    }],
     ['offline', async (page, base, expect, env) => {
         env.sets.mode = 'abort';
         await page.goto(`${base}/labels.html#sets=ons`);
@@ -344,8 +426,11 @@ const server = await serve();
 const base = `http://127.0.0.1:${server.address().port}`;
 let browser, code = 0;
 try {
+    const only = (process.env.SMOKE_ONLY || '').split(',').map((n) => n.trim()).filter(Boolean);
+    const selected = only.length ? scenarios.filter(([n]) => only.includes(n)) : scenarios;
+    if (only.length && !selected.length) throw new Error('no scenario matches SMOKE_ONLY');
     browser = await chromium.launch();
-    for (const [name, run, opts = {}] of scenarios) {
+    for (const [name, run, opts = {}] of selected) {
         const context = await browser.newContext({ acceptDownloads: true });
         const env = { context, sets: { mode: 'ok', requests: 0 } };
         const problems = [];
